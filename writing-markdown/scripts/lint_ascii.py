@@ -47,7 +47,6 @@ def process_file(
     for line_num, line in enumerate(content.splitlines(keepends=True), 1):
         new_line = line
 
-        # Replace known ambiguous characters
         for orig, repl in REPLACEMENTS.items():
             if orig in new_line:
                 # Don't auto-replace inside rule definition lines explaining the characters
@@ -64,7 +63,6 @@ def process_file(
                 if fix:
                     new_line = new_line.replace(orig, repl)
 
-        # Flag remaining non-ASCII characters outside allowed box-drawing set
         if not fix:
             for col_num, ch in enumerate(line, 1):
                 if ord(ch) > 127 and ch not in REPLACEMENTS:

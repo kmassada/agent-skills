@@ -30,6 +30,27 @@ repos:
         language: system
         types: [markdown]
 
+      - id: ruff-check
+        name: Lint Python with ruff check
+        entry: uvx ruff check .
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: ruff-format
+        name: Check Python formatting with ruff format
+        entry: uvx ruff format --check .
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: pyright-check
+        name: Check Python types with pyright
+        entry: uvx pyright .
+        language: system
+        types: [python]
+        pass_filenames: false
+
       - id: python-tests
         name: Run Python unit tests
         entry: sh -c 'python3 writing-markdown/scripts/lint_ascii_test.py && python3 writing-markdown/evals/run_eval_test.py && python3 .github/scripts/generate_readme_test.py'
