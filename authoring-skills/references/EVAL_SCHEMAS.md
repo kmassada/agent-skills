@@ -214,3 +214,17 @@ choosing a different, valid approach or command order:
 Each expectation should be a single, declarative statement describing what must
 be true in the final output or tool state. Keep assertions atomic so graders can
 pinpoint exact regressions.
+
+### E. Automated Eval Test Harness & Pre-Commit Gates
+
+Evaluation datasets must not be static, unverified JSON files. They must be
+accompanied by an automated test harness:
+
+- **Companion Test Runner:** Implement `evals/run_eval.py` capable of loading
+  `evals.json`, validating schemas, and running regex checks without requiring
+  live LLM calls.
+- **Sibling Unit Test:** Implement `evals/run_eval_test.py` to verify that
+  extraction logic and regex pattern matching pass deterministically.
+- **Pre-Commit Registration:** Register the eval test runner in the project's
+  pre-commit or CI configuration so that malformed schemas or broken regexes are
+  caught immediately before code is merged.

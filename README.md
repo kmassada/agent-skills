@@ -5,12 +5,13 @@ compatible with both **Google Antigravity** and **Anthropic Claude Code**.
 
 ---
 
-## Catalog (4 Skills)
+## Catalog (5 Skills)
 
 | Skill                                           | Summary                                                                                                                                                                                                                                                  | Components                       |
 | :---------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------- |
 | [`authoring-skills`](authoring-skills/SKILL.md) | Guides the creation, structuring, formatting, evaluating, and auditing of agent skills.                                                                                                                                                                  | `references`, `evals`, `scripts` |
 | [`controlling-tmux`](controlling-tmux/SKILL.md) | Manages tmux terminal sessions, windows, and panes.                                                                                                                                                                                                      | `references`, `evals`, `scripts` |
+| [`sharing-snips`](sharing-snips/SKILL.md)       | Provides a workflow and script to capture screenshots, automatically upload them to a Google Cloud Storage bucket using the Python client library, and copy the public URL to the macOS clipboard.                                                       | `evals`, `scripts`               |
 | [`writing-markdown`](writing-markdown/SKILL.md) | Guides writing and formatting clean, lint-compliant Markdown documents.                                                                                                                                                                                  | `references`, `evals`, `scripts` |
 | [`writing-python`](writing-python/SKILL.md)     | Enforces modern, idiomatic Python standards, static typing with collections.abc and Pylance/Pyright, open-source readability via Ruff and PEP 8, deterministic execution with uv and PEP 723, companion test discipline, and pre-commit test automation. | `references`, `evals`, `scripts` |
 
@@ -53,6 +54,21 @@ compatible with both **Google Antigravity** and **Anthropic Claude Code**.
 - **Scripts**:
   - [`dispatch_agent.py`](controlling-tmux/scripts/dispatch_agent.py)
   - [`relative_pane.py`](controlling-tmux/scripts/relative_pane.py)
+
+### [`sharing-snips`](sharing-snips/SKILL.md)
+
+> Provides a workflow and script to capture screenshots, automatically upload
+> them to a Google Cloud Storage bucket using the Python client library, and
+> copy the public URL to the macOS clipboard. Use when needing to securely and
+> quickly share visual snippets in chats or documents. Don't use for general
+> file uploads or for non-macOS environments.
+
+- **Directory**: [`sharing-snips/`](sharing-snips/)
+- **Evaluations**: [`evals.json`](sharing-snips/evals/evals.json)
+- **Scripts**:
+  - [`quota_guard.py`](sharing-snips/scripts/quota_guard.py)
+  - [`setup.sh`](sharing-snips/scripts/setup.sh)
+  - [`snip.py`](sharing-snips/scripts/snip.py)
 
 ### [`writing-markdown`](writing-markdown/SKILL.md)
 

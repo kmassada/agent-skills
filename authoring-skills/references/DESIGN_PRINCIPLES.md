@@ -105,3 +105,21 @@ To maintain high agent performance, respect the three-tier disclosure model:
 - **Tier 3 (Bundled Resources):** Offload detailed API tables, schemas, and deep
   documentation to `references/`, and complex procedural logic to executable
   scripts in `scripts/`.
+
+---
+
+## 8. Test Automation & Pre-Submit Gates
+
+A skill is production code. When skills bundle scripts in `scripts/` or
+evaluations in `evals/`, they must include automated test gates:
+
+- **Companion Unit Tests:** Every executable script must have a sibling
+  `*_test.py` that executes deterministically without mutating the user's
+  live environment.
+- **Eval Runner & Schema Gate:** `evals/run_eval.py` must support a dry-run
+  mode verifying that `evals/evals.json` syntax, expectation schemas, and regex
+  patterns remain valid.
+- **Scoped Pre-Commit / Pre-Submit Hooks:** In monorepos or multi-skill
+  environments, wire each skill's companion tests into scoped hooks (e.g.
+  `files: ^<skill-name>/` in `.pre-commit-config.yaml`). Changes to the skill
+  are automatically verified on commit without running unrelated suites.
