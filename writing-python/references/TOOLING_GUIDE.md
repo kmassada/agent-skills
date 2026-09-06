@@ -87,28 +87,86 @@ beneath the shebang:
 
 ---
 
-## 4. Mandatory Companion Unit Tests
+## 4. Mandatory Companion Unit Tests & Testing Discipline
 
-**The Rule**: Every Python file or CLI tool MUST have a companion unit test.
+**The Rule**: Every Python file or CLI tool MUST have a companion unit test
+(e.g. `scripts/tool.py` -> `scripts/tool_test.py`).
 
-- Sibling convention: `scripts/tool.py` -> `scripts/tool_test.py`.
-- Test files MUST be self-contained and run cleanly via standard library
-  `unittest`:
+### Standard Test Structure
 
-  ```python
-  import sys
-  import unittest
-  from pathlib import Path
+Test files MUST be self-contained and run cleanly via standard library
+`unittest`:
 
-  # Ensure sibling script can be imported directly
-  sys.path.insert(0, str(Path(__file__).resolve().parent))
-  ```
+```python
+import io
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
 
-- Execution command:
+# Ensure sibling script can be imported directly
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-  ```bash
-  uv run python3 scripts/tool_test.py
-  ```
+from my_tool import process_data, run_cli
+```
+
+### High-Value Testing Discipline (Mocking & Hermetic Isolation)
+
+1. **Narrow Mocking Boundaries**:
+   - **Never mock pure functions!**: If a function has no side effects, let the
+     real implementation execute. Mocking pure calculations or deterministic
+     logic masks regressions and destroys test fidelity.
+   - **Prefer real inputs for exceptions**: When testing error paths or
+     exception handlers, pass real malformed data that triggers the error
+     naturally, rather than forcing a mock to throw an exception.
+   - **Stricter class mocks (`mock.create_autospec`)**: When mocking classes or
+     third-party clients, always specify `instance=True` and `spec_set=True`:
+
+     ```python
+     mock_client = mock.create_autospec(
+         ApiClient, instance=True, spec_set=True
+     )
+     ```
+
+     This strictly prevents tests from passing if code attempts to access
+     non-existent methods or attributes.
+
+2. **Hermetic Filesystem Sandboxing**:
+   - **Never read/write to active workspace folders**: Tests modifying the
+     working tree cause flaky CI runs and dirty git trees.
+   - Always sandbox filesystem tests using `tempfile.TemporaryDirectory`:
+
+     ```python
+     def setUp(self):
+         self.temp_dir = tempfile.TemporaryDirectory()
+         self.sandbox = Path(self.temp_dir.name)
+
+     def tearDown(self):
+         self.temp_dir.cleanup()
+     ```
+
+3. **Console Output Capture (`mock.patch`)**:
+   - To assert on printed console reports or table formatting, use
+     `@mock.patch("sys.stdout", new_callable=io.StringIO)`:
+
+     ```python
+     @mock.patch("sys.stdout", new_callable=io.StringIO)
+     def test_cli_report(self, mock_stdout: io.StringIO):
+         run_cli(["--summary"])
+         self.assertIn("| Skill |", mock_stdout.getvalue())
+     ```
+
+4. **Negative Testing (Edge Cases & Malformed Inputs)**:
+   - Always include test cases validating how your script handles invalid,
+     malformed, or hostile inputs (e.g. empty lists, unexpected types, missing
+     files), not just happy paths.
+
+### Execution Command
+
+```bash
+uv run python3 scripts/tool_test.py
+```
 
 ---
 

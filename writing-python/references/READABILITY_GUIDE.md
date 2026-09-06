@@ -181,3 +181,60 @@ def fetch_records(
     """
     ...
 ```
+
+---
+
+## 7. Modern Python Idioms
+
+Adopt modern Python 3.11+ idioms for clarity, conciseness, and bug prevention:
+
+### 1. Object-Oriented Paths (`pathlib.Path`)
+
+Never use string manipulation or `os.path.join` to construct filesystem paths.
+Use `pathlib.Path` with the `/` operator:
+
+```python
+from pathlib import Path
+
+# BAD: String concatenation with os.path
+import os
+
+target = os.path.join(base_dir, "output", "data.json")
+
+# GOOD: Object-oriented Path manipulation
+target = Path(base_dir) / "output" / "data.json"
+content = target.read_text(encoding="utf-8")
+```
+
+### 2. Efficient Dictionary Iteration (`.items()`)
+
+Iterate over keys and values concurrently using `.items()` rather than looking
+up keys individually:
+
+```python
+# BAD: Key lookup in loop
+for key in config:
+    val = config[key]
+    process(key, val)
+
+# GOOD: Concurrent unpacking
+for key, val in config.items():
+    process(key, val)
+```
+
+### 3. Clean Multiline Strings (`textwrap.dedent`)
+
+When defining multiline string literals (SQL queries, commands, templates), use
+`textwrap.dedent` to keep source indentation aligned without introducing
+unwanted leading whitespace:
+
+```python
+import textwrap
+
+query = textwrap.dedent("""
+    SELECT user_id, email, created_at
+    FROM users
+    WHERE active = true
+    ORDER BY created_at DESC
+""").strip()
+```

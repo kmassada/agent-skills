@@ -54,9 +54,12 @@ modern static typing, open-source style guides, and fast development workflows.
    uvx ruff check . && uvx ruff format --check .
    ```
 
-4. **Mandatory Companion Unit Tests**: Every Python file or CLI tool MUST have a
-   companion unit test (e.g. `scripts/tool_test.py`) using standard library
-   `unittest`.
+4. **Companion Unit Tests & Hermetic Mocking**: Every Python file or CLI tool
+   MUST have a companion unit test using standard library `unittest`. Tests must
+   be hermetic (sandbox filesystem mutations via `tempfile.TemporaryDirectory`),
+   practice narrow mocking (never mock pure functions; use
+   `mock.create_autospec` with `instance=True, spec_set=True`), capture stdout
+   via `mock.patch`, and verify negative/malformed inputs.
 5. **Deterministic Script Execution via `uv`**: Standalone scripts MUST declare
    [PEP 723](https://peps.python.org/pep-0723/) inline metadata and execute via
    `uv run`.
@@ -68,3 +71,6 @@ modern static typing, open-source style guides, and fast development workflows.
    modules, classes, and functions must have docstrings. Document `Args:`,
    `Returns:`, and `Raises:` for non-trivial logic, and never duplicate type
    annotations in the docstring.
+8. **Modern Python Idioms**: Prefer object-oriented `pathlib.Path` over
+   `os.path.join`, unpack dictionary keys and values concurrently using
+   `.items()`, and format multiline string literals with `textwrap.dedent`.
