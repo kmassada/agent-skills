@@ -73,7 +73,7 @@ Every skill that requires automated evaluation should store its test cases in
 
 ```json
 {
-  "skill_name": "tmux-control",
+  "skill_name": "controlling-tmux",
   "evals": [
     {
       "id": 1,
@@ -142,7 +142,7 @@ baseline):
 ```json
 {
   "metadata": {
-    "skill_name": "tmux-control",
+    "skill_name": "controlling-tmux",
     "timestamp": "2026-09-05T21:30:00Z",
     "evals_run": [1, 2, 3],
     "runs_per_configuration": 1

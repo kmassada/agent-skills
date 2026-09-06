@@ -5,11 +5,12 @@ compatible with both **Google Antigravity** and **Anthropic Claude Code**.
 
 ---
 
-## Catalog (3 Skills)
+## Catalog (4 Skills)
 
 | Skill                                           | Summary                                                                                                                                                                                                                                                  | Components                       |
 | :---------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------- |
 | [`authoring-skills`](authoring-skills/SKILL.md) | Guides the creation, structuring, formatting, evaluating, and auditing of agent skills.                                                                                                                                                                  | `references`, `evals`, `scripts` |
+| [`controlling-tmux`](controlling-tmux/SKILL.md) | Manages tmux terminal sessions, windows, and panes.                                                                                                                                                                                                      | `references`, `evals`, `scripts` |
 | [`writing-markdown`](writing-markdown/SKILL.md) | Guides writing and formatting clean, lint-compliant Markdown documents.                                                                                                                                                                                  | `references`, `evals`, `scripts` |
 | [`writing-python`](writing-python/SKILL.md)     | Enforces modern, idiomatic Python standards, static typing with collections.abc and Pylance/Pyright, open-source readability via Ruff and PEP 8, deterministic execution with uv and PEP 723, companion test discipline, and pre-commit test automation. | `references`, `evals`, `scripts` |
 
@@ -32,6 +33,26 @@ compatible with both **Google Antigravity** and **Anthropic Claude Code**.
   - [`EVAL_SCHEMAS.md`](authoring-skills/references/EVAL_SCHEMAS.md)
   - [`FORMAT.md`](authoring-skills/references/FORMAT.md)
 - **Scripts**: [`audit_skill.py`](authoring-skills/scripts/audit_skill.py)
+
+### [`controlling-tmux`](controlling-tmux/SKILL.md)
+
+> Manages tmux terminal sessions, windows, and panes. Creates windows, splits
+> panes (horizontal/vertical/full-width), sends commands to specific panes,
+> quietly captures outputs without stealing user focus, navigates adjacent panes
+> geometrically, and dispatches AI agent sessions into dedicated tmux windows.
+> Use when interacting with terminal multiplexers, dispatching AI agents to tmux
+> windows, running background tasks in tmux, reading outputs from persistent
+> panes, or navigating adjacent panes. Don't use for local subshell command
+> execution, standard file manipulation, or non-terminal workflows.
+
+- **Directory**: [`controlling-tmux/`](controlling-tmux/)
+- **Evaluations**: [`evals.json`](controlling-tmux/evals/evals.json)
+- **References**:
+  - [`AGENT_DISPATCH.md`](controlling-tmux/references/AGENT_DISPATCH.md)
+  - [`GEOMETRIC_NAVIGATION.md`](controlling-tmux/references/GEOMETRIC_NAVIGATION.md)
+- **Scripts**:
+  - [`dispatch_agent.py`](controlling-tmux/scripts/dispatch_agent.py)
+  - [`relative_pane.py`](controlling-tmux/scripts/relative_pane.py)
 
 ### [`writing-markdown`](writing-markdown/SKILL.md)
 

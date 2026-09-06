@@ -76,6 +76,16 @@ repos:
         files: ^authoring-skills/
         pass_filenames: false
 
+      - id: controlling-tmux-tests
+        name: Run controlling-tmux companion tests
+        entry:
+          sh -c 'python3 controlling-tmux/scripts/relative_pane_test.py && python3
+          controlling-tmux/scripts/dispatch_agent_test.py && python3
+          controlling-tmux/evals/run_eval_test.py'
+        language: system
+        files: ^controlling-tmux/
+        pass_filenames: false
+
       - id: catalog-script-tests
         name: Run catalog generator companion tests
         entry: python3 .github/scripts/generate_readme_test.py

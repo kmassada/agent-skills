@@ -1,0 +1,49 @@
+[project]
+name = "controlling-tmux"
+version = "0.1.0"
+description = "Deterministic tmux terminal session, window, and pane controller."
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "W",
+    "I",
+    "UP",
+    "B",
+    "D",
+    "BLE",
+    "PLW",
+    "ERA001",
+    "TID",
+]
+ignore = [
+    "E501",
+]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"typing.Sequence".msg = "Use collections.abc.Sequence instead."
+"typing.Mapping".msg = "Use collections.abc.Mapping instead."
+"typing.Iterable".msg = "Use collections.abc.Iterable instead."
+"typing.Callable".msg = "Use collections.abc.Callable instead."
+"typing.Iterator".msg = "Use collections.abc.Iterator instead."
+"typing.AsyncIterable".msg = "Use collections.abc.AsyncIterable instead."
+"typing.AsyncIterator".msg = "Use collections.abc.AsyncIterator instead."
+"typing.Set".msg = "Use collections.abc.Set or built-in set instead."
+"typing.MutableMapping".msg = "Use collections.abc.MutableMapping instead."
+"typing.MutableSequence".msg = "Use collections.abc.MutableSequence instead."
+"typing.List".msg = "Use collections.abc.Sequence for parameters, or built-in list for returns."
+"typing.Dict".msg = "Use collections.abc.Mapping for parameters, or built-in dict for returns."
+"typing.Tuple".msg = "Use collections.abc.Sequence for parameters, or built-in tuple for returns."
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"*_test.py" = ["D100", "D101", "D102", "D103"]

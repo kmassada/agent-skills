@@ -1,0 +1,191 @@
+{
+  "skill_name": "controlling-tmux",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Run pytest tests/test_api.py in pane %2",
+      "expected_output": "Dispatches pytest tests/test_api.py to tmux pane %2 without executing it in the local shell.",
+      "files": [],
+      "expectations": [
+        "The command is sent to pane %2 using tmux send-keys with C-m",
+        "pytest tests/test_api.py is NOT executed directly in the agent's own subshell",
+        "The agent does NOT steal user focus with select-pane"
+      ],
+      "expected_command_patterns": [
+        "tmux send-keys -t %2 ['\"]pytest tests/test_api\\.py['\"] C-m"
+      ],
+      "forbidden_command_patterns": [
+        "^pytest tests/test_api\\.py"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "In pane %3, run cargo build --release",
+      "expected_output": "Sends cargo build --release to tmux pane %3 without running it locally.",
+      "files": [],
+      "expectations": [
+        "The command is sent to pane %3 using tmux send-keys with C-m",
+        "cargo build is NOT executed directly in the agent's own subshell"
+      ],
+      "expected_command_patterns": [
+        "tmux send-keys -t %3 ['\"]cargo build --release['\"] C-m"
+      ],
+      "forbidden_command_patterns": [
+        "^cargo build --release"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "What is currently showing in pane %1?",
+      "expected_output": "Captures and displays the visible output of pane %1 without stealing focus.",
+      "files": [],
+      "expectations": [
+        "The agent reads the pane output using tmux capture-pane -t %1 -p",
+        "The agent does NOT call select-pane or select-window to steal focus"
+      ],
+      "expected_command_patterns": [
+        "tmux capture-pane -t %1 -p"
+      ],
+      "forbidden_command_patterns": [
+        "tmux select-pane",
+        "tmux select-window"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Check the last 50 lines of logs in pane %2",
+      "expected_output": "Captures at least 50 lines of scrollback history from pane %2.",
+      "files": [],
+      "expectations": [
+        "The agent uses tmux capture-pane with scrollback flag -S -50 (or greater) for pane %2",
+        "The agent does NOT call select-pane"
+      ],
+      "expected_command_patterns": [
+        "tmux capture-pane -t %2 -p -S -50"
+      ],
+      "forbidden_command_patterns": [
+        "tmux select-pane"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Focus pane %2",
+      "expected_output": "Explicitly switches focus to pane %2.",
+      "files": [],
+      "expectations": [
+        "The agent executes tmux select-pane -t %2"
+      ],
+      "expected_command_patterns": [
+        "tmux select-pane -t %2"
+      ],
+      "forbidden_command_patterns": []
+    },
+    {
+      "id": 6,
+      "prompt": "Split the current window side-by-side",
+      "expected_output": "Splits the window horizontally and captures the resulting pane ID.",
+      "files": [],
+      "expectations": [
+        "The agent splits horizontally using tmux split-window -h",
+        "The agent captures the pane ID using -P -F '#{pane_id}'",
+        "The agent does NOT create an entirely new window"
+      ],
+      "expected_command_patterns": [
+        "tmux split-window -h.*-P -F ['\"]#\\{pane_id\\}['\"]"
+      ],
+      "forbidden_command_patterns": [
+        "tmux new-window"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Create a new window named server",
+      "expected_output": "Creates a new window named server and captures the window ID.",
+      "files": [],
+      "expectations": [
+        "The agent creates a new window using tmux new-window -n server",
+        "The agent captures the window ID using -P -F '#{window_id}'",
+        "The agent does NOT split an existing pane"
+      ],
+      "expected_command_patterns": [
+        "tmux new-window.*-n server.*-P -F ['\"]#\\{window_id\\}['\"]"
+      ],
+      "forbidden_command_patterns": [
+        "tmux split-window"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "What is running in the pane to the right?",
+      "expected_output": "Directionally resolves the pane to the right using relative_pane.py and reads its content.",
+      "files": [],
+      "expectations": [
+        "The agent invokes relative_pane.py with --direction=right",
+        "The agent captures the resolved pane output using tmux capture-pane",
+        "The agent does NOT switch focus with select-pane unless requested"
+      ],
+      "expected_command_patterns": [
+        "relative_pane\\.py --direction=right",
+        "tmux capture-pane"
+      ],
+      "forbidden_command_patterns": [
+        "tmux select-pane"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "How do I split a comma-separated string in Python?",
+      "expected_output": "Explains Python string split method without executing tmux commands.",
+      "files": [],
+      "expectations": [
+        "The agent does NOT execute any tmux commands",
+        "The agent provides standard Python str.split() explanation"
+      ],
+      "expected_command_patterns": [],
+      "forbidden_command_patterns": [
+        "tmux"
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "Run pytest tests/ locally in your current shell",
+      "expected_output": "Executes the command locally as explicitly instructed without sending keys to tmux.",
+      "files": [],
+      "expectations": [
+        "The agent does NOT send commands to tmux using tmux send-keys"
+      ],
+      "expected_command_patterns": [],
+      "forbidden_command_patterns": [
+        "tmux send-keys"
+      ]
+    },
+    {
+      "id": 11,
+      "prompt": "Dispatch a new agent in a new tmux window to refactor the database schema",
+      "expected_output": "Spawns a detached tmux window running agy or dispatch_agent.py without blocking the current subshell.",
+      "files": [],
+      "expectations": [
+        "The agent creates a detached tmux window running agy or uses dispatch_agent.py",
+        "The agent does NOT invoke agy directly in the local subshell"
+      ],
+      "expected_command_patterns": [
+        "(tmux new-window.*agy|dispatch_agent\\.py)"
+      ],
+      "forbidden_command_patterns": []
+    },
+    {
+      "id": 12,
+      "prompt": "Open a horizontal split pane beside me connected to conversation d202f5d4-f6b7-4b75-bdb3-03679b8122fa",
+      "expected_output": "Splits the current window horizontally and connects to the specified conversation ID.",
+      "files": [],
+      "expectations": [
+        "The agent splits horizontally using tmux split-window -h or dispatch_agent.py",
+        "The agent targets the specified conversation ID with agy --conversation"
+      ],
+      "expected_command_patterns": [
+        "(tmux split-window.*--conversation|dispatch_agent\\.py.*--conversation)"
+      ],
+      "forbidden_command_patterns": []
+    }
+  ]
+}
