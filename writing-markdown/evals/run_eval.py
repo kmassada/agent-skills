@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import time
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -115,11 +116,11 @@ def check_markdown_expectation(text: str, expectation: str) -> tuple[bool, str]:
 
 
 def evaluate_static_benchmark(
-    test_case: dict[str, Any], verbose: bool = False
+    test_case: Mapping[str, Any], verbose: bool = False
 ) -> tuple[bool, list[str]]:
     """Deterministically validates expected outputs and patterns for a test case."""
     test_id = test_case["id"]
-    expectations = test_case.get("expectations", [])
+    expectations: Sequence[str] = test_case.get("expectations", [])
 
     # Sample canonical solutions corresponding to benchmark test cases
     sample_solutions = {
@@ -158,7 +159,7 @@ def evaluate_static_benchmark(
 
 
 def run_agent_eval(
-    test_case: dict[str, Any], backend: str, verbose: bool = False
+    test_case: Mapping[str, Any], backend: str, verbose: bool = False
 ) -> tuple[bool, list[str]]:
     """Executes a test case against agy or claude CLI backend."""
     prompt = test_case["prompt"]

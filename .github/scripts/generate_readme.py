@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -265,7 +266,7 @@ def collect_skills(repo_root: Path) -> list[dict[str, Any]]:
     return skills
 
 
-def generate_table(skills: list[dict[str, Any]]) -> str:
+def generate_table(skills: Sequence[Mapping[str, Any]]) -> str:
     """Generates an aligned, pretty-printed Markdown catalog table."""
     headers = ["Skill", "Summary", "Components"]
     rows = []
@@ -275,7 +276,6 @@ def generate_table(skills: list[dict[str, Any]]) -> str:
         summary = s["summary"]
         rows.append([link, summary, comp_str])
 
-    # Calculate column widths for visually aligned pipes
     col_widths = [len(h) for h in headers]
     for row in rows:
         for i, cell in enumerate(row):
@@ -305,7 +305,7 @@ def generate_table(skills: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def generate_details(skills: list[dict[str, Any]]) -> str:
+def generate_details(skills: Sequence[Mapping[str, Any]]) -> str:
     """Generates the detailed breakdown sections for each skill."""
     sections = []
     for s in skills:
