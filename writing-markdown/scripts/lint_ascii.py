@@ -52,11 +52,7 @@ def process_file(
                 # Don't auto-replace inside rule definition lines explaining the characters
                 if "U+276F" in new_line and orig == "\u276f":
                     continue
-                if (
-                    "U+2018" in new_line
-                    or "U+201C" in new_line
-                    or "U+2014" in new_line
-                ):
+                if "U+2018" in new_line or "U+201C" in new_line or "U+2014" in new_line:
                     continue
 
                 count = new_line.count(orig)
@@ -120,18 +116,14 @@ def main() -> None:
 
         for f in files:
             files_checked += 1
-            count, issues = process_file(
-                f, fix=args.fix, check_all=args.check_all
-            )
+            count, issues = process_file(f, fix=args.fix, check_all=args.check_all)
             total_issues += count
             for issue in issues:
                 print(issue)
 
     action_str = "fixed" if args.fix else "flagged"
     if total_issues > 0:
-        print(
-            f"\n{total_issues} issue(s) {action_str} across {files_checked} file(s)."
-        )
+        print(f"\n{total_issues} issue(s) {action_str} across {files_checked} file(s).")
         if not args.fix:
             sys.exit(1)
     else:

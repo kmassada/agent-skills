@@ -35,9 +35,7 @@ class GenerateReadmeTest(unittest.TestCase):
 
     def test_parse_frontmatter_quoted(self):
         """Should strip single and double quotes from values."""
-        content = (
-            "---\nname: \"my-skill\"\ndescription: 'A useful skill.'\n---\n"
-        )
+        content = "---\nname: \"my-skill\"\ndescription: 'A useful skill.'\n---\n"
         meta = parse_frontmatter(content)
         self.assertEqual(meta.get("name"), "my-skill")
         self.assertEqual(meta.get("description"), "A useful skill.")
@@ -172,9 +170,7 @@ class GenerateReadmeTest(unittest.TestCase):
         )
         self.assertIn("- **References**:", details)
         self.assertIn("  - [`REF1.md`](my-skill/references/REF1.md)", details)
-        self.assertIn(
-            "- **Scripts**: [`tool.py`](my-skill/scripts/tool.py)", details
-        )
+        self.assertIn("- **Scripts**: [`tool.py`](my-skill/scripts/tool.py)", details)
 
 
 if __name__ == "__main__":

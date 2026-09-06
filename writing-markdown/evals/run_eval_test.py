@@ -43,14 +43,10 @@ class RunEvalTest(unittest.TestCase):
         valid = "```python\nprint('hi')\n```\n"
         invalid = "```\nprint('hi')\n```\n"
 
-        passed, _ = check_markdown_expectation(
-            valid, "language identifier declared"
-        )
+        passed, _ = check_markdown_expectation(valid, "language identifier declared")
         self.assertTrue(passed)
 
-        failed, _ = check_markdown_expectation(
-            invalid, "language identifier declared"
-        )
+        failed, _ = check_markdown_expectation(invalid, "language identifier declared")
         self.assertFalse(failed)
 
     def test_nested_code_block_indentation(self):
@@ -69,9 +65,7 @@ class RunEvalTest(unittest.TestCase):
         short_line = "A" * 79 + "\n"
         long_line = "A" * 85 + "\n"
 
-        passed, _ = check_markdown_expectation(
-            short_line, "80 characters limit"
-        )
+        passed, _ = check_markdown_expectation(short_line, "80 characters limit")
         self.assertTrue(passed)
 
         failed, _ = check_markdown_expectation(long_line, "80 characters limit")

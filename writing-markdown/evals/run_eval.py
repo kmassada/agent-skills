@@ -87,11 +87,7 @@ def check_markdown_expectation(text: str, expectation: str) -> tuple[bool, str]:
         )
 
     # GFM Callouts
-    if (
-        "alert" in exp_lower
-        or "callout" in exp_lower
-        or "[!warning]" in exp_lower
-    ):
+    if "alert" in exp_lower or "callout" in exp_lower or "[!warning]" in exp_lower:
         has_callout = bool(
             re.search(
                 r"^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]",
@@ -143,9 +139,7 @@ def evaluate_static_benchmark(
         10: "```python\ndef hello() -> None:\n    print('hello')\n```\n",
     }
 
-    solution = (
-        sample_solutions.get(test_id) or test_case.get("expected_output") or ""
-    )
+    solution = sample_solutions.get(test_id) or test_case.get("expected_output") or ""
     failures: list[str] = []
 
     for exp in expectations:
@@ -266,9 +260,7 @@ def main() -> None:
         )
 
         if args.backend in ("static", "dry-run"):
-            passed, failures = evaluate_static_benchmark(
-                case, verbose=args.verbose
-            )
+            passed, failures = evaluate_static_benchmark(case, verbose=args.verbose)
         else:
             passed, failures = run_agent_eval(
                 case, backend=args.backend, verbose=args.verbose
