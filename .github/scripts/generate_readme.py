@@ -39,7 +39,7 @@ def parse_frontmatter(content: str) -> Mapping[str, Any]:
         return {}
 
     frontmatter_text = match.group(1)
-    data: dict[str, Any] = {}
+    data = {}
     lines = frontmatter_text.splitlines()
 
     current_key: str | None = None
