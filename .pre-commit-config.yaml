@@ -1,0 +1,31 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+
+  - repo: local
+    hooks:
+      - id: generate-readme
+        name: Check README.md catalog synchronization
+        entry: python3 .github/scripts/generate_readme.py --check
+        language: system
+        files: ^(.*SKILL\.md|\.github/.*|README\.md)$
+        pass_filenames: false
+
+      - id: lint-ascii
+        name: Check basic ASCII hygiene in Markdown
+        entry: python3 writing-markdown/scripts/lint_ascii.py
+        language: system
+        types: [markdown]
+
+      - id: markdownlint
+        name: Lint Markdown files
+        entry: markdownlint --config writing-markdown/.markdownlint.json
+        language: system
+        types: [markdown]
