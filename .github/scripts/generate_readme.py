@@ -235,7 +235,12 @@ def collect_skills(repo_root: Path) -> List[Dict[str, Any]]:
         script_files = []
         if (item / "scripts").is_dir():
             for script in sorted((item / "scripts").iterdir()):
-                if script.is_file() and not script.name.startswith("."):
+                if (
+                    script.is_file()
+                    and not script.name.startswith(".")
+                    and not script.name.endswith("_test.py")
+                    and not script.name.startswith("test_")
+                ):
                     script_files.append(script.name)
 
         skills.append(
