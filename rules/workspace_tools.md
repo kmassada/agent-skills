@@ -1,14 +1,14 @@
 ---
 trigger: model_decision
-description: "Guidelines and safety protocols for interacting with Google Workspace (Gmail, Calendar, Drive, Docs) via the gws CLI"
+description: "Guidelines and safety protocols for interacting with Google Workspace (Gmail, Calendar, Drive, Docs, Sheets, Slides, Keep) via the gws CLI"
 ---
 
 # Google Workspace Tools (workspace-tools)
 
-When interacting with Google Workspace services (Gmail, Calendar, Drive, Docs),
-use the Google Workspace CLI (`gws`, Homebrew formula `googleworkspace-cli`).
-Operate according to the following protocols, helper workflows, and safety
-invariants:
+When interacting with Google Workspace services (Gmail, Calendar, Drive, Docs,
+Sheets, Slides, Keep), use the Google Workspace CLI (`gws`, Homebrew formula
+`googleworkspace-cli`). Operate according to the following protocols, helper
+workflows, and safety invariants:
 
 ## Core Domains
 
@@ -20,8 +20,14 @@ The CLI exposes dedicated subcommands for core Google Workspace domains:
   triage mailboxes.
 * **Drive (`gws drive`)**: Search files, organize folder structures, upload
   assets, and manage permissions.
-* **Docs (`gws docs`)**: Retrieve, create, and manipulate document content and
-  revisions.
+* **Docs (`gws docs`)**: Retrieve, create, append, and manipulate document
+  content and structural revisions.
+* **Sheets (`gws sheets`)**: Read ranges, append tabular rows, create
+  spreadsheets, and update cell values.
+* **Slides (`gws slides`)**: Generate presentations, inspect slide structure,
+  and batch-update visual elements.
+* **Keep (`gws keep`)**: List, retrieve, create, and delete notes and task lists
+  (requires Workspace domain access for API enablement).
 
 ## Common Helper Workflows
 
@@ -35,6 +41,22 @@ Use high-level helper commands (`+<command>`) for streamlined operations:
   * `gws gmail +read <id>`: Fetch and render full email thread contents.
   * `gws gmail +send`: Compose and dispatch new messages.
   * `gws gmail +reply`: Send contextual responses to existing threads.
+* **Docs**:
+  * `gws docs +write`: Append text blocks directly to an existing document.
+  * `gws docs documents create --json '{"title": "..."}'`: Create documents.
+* **Sheets**:
+  * `gws sheets +read`: Read tabular cell values from a designated sheet range.
+  * `gws sheets +append`: Append row data directly into a spreadsheet.
+* **Slides**:
+  * `gws slides presentations get --params '{"presentationId": "..."}'`:
+    Inspect presentation structure and slides.
+  * `gws slides presentations create --json '{"title": "..."}'`: Create
+    new presentation decks.
+* **Keep**:
+  * `gws keep notes list`: Enumerate notes across the user's account.
+  * `gws keep notes get --params '{"name": "notes/<id>"}'`: Inspect note body.
+  * `gws keep notes create --json '{"title": "...", "body": {...}}'`:
+    Add a new note or checklist.
 
 ## Safety Invariants & Execution Boundaries
 
@@ -42,12 +64,14 @@ Agents must respect strict boundaries between autonomous inspection and
 user-confirmed mutation:
 
 * **Autonomous Read Actions**: Non-destructive operations such as reading
-  threads (`+triage`, `+read`), viewing schedules (`+agenda`), and querying
-  metadata (`files list`) are safe to execute autonomously.
+  threads (`+triage`, `+read`), viewing schedules (`+agenda`), querying files
+  (`files list`), reading spreadsheets (`+read`), inspecting presentations, and
+  listing notes (`notes list`) are safe to execute autonomously.
 * **Mandatory Confirmation on Mutation**: External or mutating actions MUST
   prompt the user for explicit confirmation before execution. This includes
-  sending emails (`+send`, `+reply`), creating, updating, or deleting calendar
-  events, deleting files, and modifying sharing permissions.
+  sending emails (`+send`, `+reply`), creating or modifying calendar events,
+  updating document or sheet contents (`+write`, `+append`), altering
+  presentations, deleting files/notes, and changing sharing permissions.
 * **Draft Verification**: Always present a complete draft or parameter preview
   to the user when requesting confirmation for any mutating action.
 * **Structured Output & Dry Runs**: Prefer `--format json` for reliable agent
