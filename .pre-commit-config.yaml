@@ -32,7 +32,7 @@ repos:
 
       - id: python-tests
         name: Run Python unit tests
-        entry: sh -c 'python3 writing-markdown/scripts/lint_ascii_test.py && python3 .github/scripts/generate_readme_test.py'
+        entry: sh -c 'python3 writing-markdown/scripts/lint_ascii_test.py && python3 writing-markdown/evals/run_eval_test.py && python3 .github/scripts/generate_readme_test.py'
         language: system
         types: [python]
         pass_filenames: false

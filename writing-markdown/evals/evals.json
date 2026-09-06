@@ -18,7 +18,7 @@
       "expected_output": "The code block is nested with 4-space indentation and separated with blank lines.",
       "files": [],
       "expectations": [
-        "The code block is preceded by a blank line",
+        "The code block is preceded and followed by a blank line",
         "The triple backticks and code contents are indented by 4 spaces",
         "A syntax language identifier (bash) is declared on the code block (MD040)",
         "Step 3 continues sequentially after the code block"
@@ -42,7 +42,74 @@
       "files": [],
       "expectations": [
         "Uses > [!WARNING] or > [!NOTE] syntax",
-        "The callout block is surrounded by blank lines"
+        "The callout block is surrounded by blank lines",
+        "Text inside the callout uses standard markdown formatting"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Format a long descriptive paragraph to strictly obey the 80-character line length limit (MD013)",
+      "expected_output": "The paragraph is hard-wrapped so no prose line exceeds 80 characters.",
+      "files": [],
+      "expectations": [
+        "Every line of prose is hard-wrapped at 80 characters or fewer",
+        "Word breaks occur on natural word boundaries without hyphenation",
+        "Satisfies markdownlint rule MD013 (line-length)"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Sanitize this text containing non-basic ASCII homoglyphs: 'Wait 1–2s. “Hello world” — see status.'",
+      "expected_output": "All Unicode en-dashes, em-dashes, and smart quotes are replaced with basic ASCII equivalents.",
+      "files": [],
+      "expectations": [
+        "En-dash U+2013 is replaced with ASCII hyphen (-)",
+        "Em-dash U+2014 is replaced with double ASCII hyphen (--)",
+        "Curly double quotes are replaced with straight double quotes (\")",
+        "The sanitized string contains only basic ASCII characters"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Replace the heavy prompt chevron ❯ (U+276F) with a basic ASCII character in terminal instructions",
+      "expected_output": "The heavy prompt glyph is replaced with a standard ASCII right angle bracket (>).",
+      "files": [],
+      "expectations": [
+        "U+276F is replaced with >",
+        "Does not trigger VS Code unicodeHighlight warnings"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "Ensure headings have proper spacing: '# Section\nSome text\n## Subsection'",
+      "expected_output": "Headings are surrounded by blank lines above and below to satisfy MD022.",
+      "files": [],
+      "expectations": [
+        "A blank line exists after the level 1 heading",
+        "A blank line exists before and after the level 2 heading",
+        "Satisfies markdownlint rule MD022 (blanks-around-headings)"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "Format a Markdown table with 3 columns so that vertical pipes are visually aligned in plain text",
+      "expected_output": "The table header, separator, and cells are padded with spaces to vertically align all pipes.",
+      "files": [],
+      "expectations": [
+        "Column separator uses :--- for left alignment",
+        "All pipe characters (|) align vertically across every row",
+        "Cells are padded with trailing spaces to match the column width"
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "Write a code block for Python without triggering MD040 (fenced-code-language)",
+      "expected_output": "The fenced code block explicitly specifies 'python' immediately after the opening backticks.",
+      "files": [],
+      "expectations": [
+        "Opening fence has ```python with no space between backticks and language",
+        "Closing fence has ```",
+        "Satisfies markdownlint rule MD040"
       ]
     }
   ]

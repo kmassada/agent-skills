@@ -14,29 +14,28 @@ Zero-dependency Python script that:
 """
 
 import argparse
-import os
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
-def parse_frontmatter(content: str) -> Dict[str, Any]:
+def parse_frontmatter(content: str) -> dict[str, Any]:
     """Parses YAML frontmatter without external dependencies."""
     match = re.match(r"^---\r?\n(.*?)\r?\n---\r?\n(.*)$", content, re.DOTALL)
     if not match:
         return {}
 
     frontmatter_text = match.group(1)
-    data: Dict[str, Any] = {}
+    data: dict[str, Any] = {}
     lines = frontmatter_text.splitlines()
 
-    current_key: Optional[str] = None
-    current_val_lines: List[str] = []
-    block_mode: Optional[str] = None
+    current_key: str | None = None
+    current_val_lines: list[str] = []
+    block_mode: str | None = None
 
     def finalize_key():
         nonlocal current_key, current_val_lines, block_mode
@@ -129,14 +128,14 @@ def sanitize_ascii(text: str) -> str:
         "\u2014": "--",
         "\u2018": "'",
         "\u2019": "'",
-        "\u201C": '"',
-        "\u201D": '"',
+        "\u201c": '"',
+        "\u201d": '"',
         "\u2026": "...",
-        "\u276F": ">",
+        "\u276f": ">",
         "\u2192": "->",
         "\u2022": "*",
-        "\u00A0": " ",
-        "\u200B": "",
+        "\u00a0": " ",
+        "\u200b": "",
     }
     for k, v in replacements.items():
         text = text.replace(k, v)
@@ -157,7 +156,7 @@ def format_markdown(file_path: Path) -> None:
             "80",
             str(file_path),
         ]
-        subprocess.run(cmd, capture_output=True, text=True)
+        subprocess.run(cmd, capture_output=True, text=True, check=False)
     elif npx_bin:
         cmd = [
             npx_bin,
@@ -169,7 +168,7 @@ def format_markdown(file_path: Path) -> None:
             "80",
             str(file_path),
         ]
-        subprocess.run(cmd, capture_output=True, text=True)
+        subprocess.run(cmd, capture_output=True, text=True, check=False)
 
     mdlint_bin = shutil.which("markdownlint")
     if mdlint_bin:
@@ -186,10 +185,11 @@ def format_markdown(file_path: Path) -> None:
             [mdlint_bin, "--fix"] + config_args + [str(file_path)],
             capture_output=True,
             text=True,
+            check=False,
         )
 
 
-def collect_skills(repo_root: Path) -> List[Dict[str, Any]]:
+def collect_skills(repo_root: Path) -> list[dict[str, Any]]:
     """Discovers all skills with SKILL.md in immediate subdirectories."""
     skills = []
     for item in sorted(repo_root.iterdir()):
@@ -207,9 +207,7 @@ def collect_skills(repo_root: Path) -> List[Dict[str, Any]]:
         description = meta.get("description", "").strip()
 
         has_evals = (item / "evals" / "evals.json").is_file()
-        has_scripts = (item / "scripts").is_dir() and any(
-            (item / "scripts").iterdir()
-        )
+        has_scripts = (item / "scripts").is_dir() and any((item / "scripts").iterdir())
         has_refs = (item / "references").is_dir() and any(
             (item / "references").iterdir()
         )
@@ -263,7 +261,7 @@ def collect_skills(repo_root: Path) -> List[Dict[str, Any]]:
     return skills
 
 
-def generate_table(skills: List[Dict[str, Any]]) -> str:
+def generate_table(skills: list[dict[str, Any]]) -> str:
     """Generates an aligned, pretty-printed Markdown catalog table."""
     headers = ["Skill", "Summary", "Components"]
     rows = []
@@ -280,13 +278,9 @@ def generate_table(skills: List[Dict[str, Any]]) -> str:
             col_widths[i] = max(col_widths[i], len(cell))
 
     header_line = (
-        "| "
-        + " | ".join(h.ljust(col_widths[i]) for i, h in enumerate(headers))
-        + " |"
+        "| " + " | ".join(h.ljust(col_widths[i]) for i, h in enumerate(headers)) + " |"
     )
-    sep_parts = [
-        ":" + "-" * max(3, col_widths[i] - 1) for i in range(len(headers))
-    ]
+    sep_parts = [":" + "-" * max(3, col_widths[i] - 1) for i in range(len(headers))]
     sep_line = "| " + " | ".join(sep_parts) + " |"
 
     lines = [header_line, sep_line]
@@ -301,7 +295,7 @@ def generate_table(skills: List[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def generate_details(skills: List[Dict[str, Any]]) -> str:
+def generate_details(skills: list[dict[str, Any]]) -> str:
     """Generates the detailed breakdown sections for each skill."""
     sections = []
     for s in skills:
@@ -330,22 +324,16 @@ def generate_details(skills: List[Dict[str, Any]]) -> str:
             else:
                 lines.append("- **References**:")
                 for ref in s["ref_files"]:
-                    lines.append(
-                        f"  - [`{ref}`]({s['dir_name']}/references/{ref})"
-                    )
+                    lines.append(f"  - [`{ref}`]({s['dir_name']}/references/{ref})")
 
         if s["script_files"]:
             if len(s["script_files"]) == 1:
                 sc = s["script_files"][0]
-                lines.append(
-                    f"- **Scripts**: [`{sc}`]({s['dir_name']}/scripts/{sc})"
-                )
+                lines.append(f"- **Scripts**: [`{sc}`]({s['dir_name']}/scripts/{sc})")
             else:
                 lines.append("- **Scripts**:")
                 for sc in s["script_files"]:
-                    lines.append(
-                        f"  - [`{sc}`]({s['dir_name']}/scripts/{sc})"
-                    )
+                    lines.append(f"  - [`{sc}`]({s['dir_name']}/scripts/{sc})")
 
         sections.append("\n".join(lines))
 
@@ -448,9 +436,7 @@ def main():
     repo_root = args.repo_root.resolve()
     output_path = (args.output or (repo_root / "README.md")).resolve()
 
-    template_path = (
-        args.template or (repo_root / ".github" / "README.template.md")
-    )
+    template_path = args.template or (repo_root / ".github" / "README.template.md")
     if template_path.is_file():
         template_content = template_path.read_text(encoding="utf-8")
     else:
@@ -461,13 +447,9 @@ def main():
     details_md = generate_details(skills)
 
     readme_content = template_content
-    readme_content = readme_content.replace(
-        "<!-- SKILLS_COUNT -->", str(len(skills))
-    )
+    readme_content = readme_content.replace("<!-- SKILLS_COUNT -->", str(len(skills)))
     readme_content = readme_content.replace("<!-- SKILLS_TABLE -->", table_md)
-    readme_content = readme_content.replace(
-        "<!-- SKILLS_DETAILS -->", details_md
-    )
+    readme_content = readme_content.replace("<!-- SKILLS_DETAILS -->", details_md)
 
     readme_content = sanitize_ascii(readme_content)
 
@@ -509,9 +491,7 @@ def main():
         format_markdown(output_path)
         print(f"Auto-formatted {output_path} with prettier & markdownlint.")
 
-    print(
-        f"Successfully generated catalog for {len(skills)} skills at {output_path}"
-    )
+    print(f"Successfully generated catalog for {len(skills)} skills at {output_path}")
 
     if args.lint:
         mdlint_args = ["markdownlint"]
@@ -519,7 +499,10 @@ def main():
         if custom_config.is_file():
             mdlint_args.extend(["--config", str(custom_config)])
         mdlint = subprocess.run(
-            mdlint_args + [str(output_path)], capture_output=True, text=True
+            mdlint_args + [str(output_path)],
+            capture_output=True,
+            text=True,
+            check=False,
         )
         if mdlint.returncode != 0:
             print("markdownlint issues found:", file=sys.stderr)

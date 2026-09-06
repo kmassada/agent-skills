@@ -13,7 +13,7 @@ from pathlib import Path
 # Ensure sibling scripts can be imported directly
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lint_ascii import ALLOWED_BOX_DRAWING, REPLACEMENTS, process_file
+from lint_ascii import process_file
 
 
 class LintAsciiTest(unittest.TestCase):
@@ -50,7 +50,7 @@ class LintAsciiTest(unittest.TestCase):
         test_file = self.dir_path / "quotes.md"
         test_file.write_text("“Double quotes” and ‘single quotes’.\n", encoding="utf-8")
 
-        count, issues = process_file(test_file, fix=False)
+        count, _ = process_file(test_file, fix=False)
         self.assertEqual(count, 4)
 
     def test_detects_heavy_angle_bracket(self):
@@ -68,7 +68,7 @@ class LintAsciiTest(unittest.TestCase):
         original = "“Hello world” — wait 1–2s ❯ run\n"
         test_file.write_text(original, encoding="utf-8")
 
-        count, issues = process_file(test_file, fix=True)
+        count, _ = process_file(test_file, fix=True)
         self.assertEqual(count, 5)
 
         fixed_content = test_file.read_text(encoding="utf-8")
@@ -91,16 +91,20 @@ class LintAsciiTest(unittest.TestCase):
 
         count, issues = process_file(test_file, fix=False, check_all=True)
         self.assertGreater(count, 0)
-        self.assertTrue(any("U+251C" in i or "U+2500" in i or "U+2514" in i for i in issues))
+        self.assertTrue(
+            any("U+251C" in i or "U+2500" in i or "U+2514" in i for i in issues)
+        )
 
     def test_rule_explanation_line_exemption(self):
-        """Lines explaining rule definitions (e.g. mentioning U+276F) should be exempt."""
+        """Lines explaining rule definitions should be exempt."""
         test_file = self.dir_path / "rule_doc.md"
-        test_file.write_text("Rule: Replace U+276F ❯ with > in shell prompts.\n", encoding="utf-8")
+        test_file.write_text(
+            "Rule: Replace U+276F ❯ with > in shell prompts.\n",
+            encoding="utf-8",
+        )
 
-        count, issues = process_file(test_file, fix=True)
+        count, _ = process_file(test_file, fix=True)
         self.assertEqual(count, 0)
-        # Verify content was not modified
         self.assertIn("❯", test_file.read_text(encoding="utf-8"))
 
 
