@@ -1,0 +1,37 @@
+{
+  "skill_name": "sharing-snips",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Take a screenshot of my current screen region, upload it to my free-tier GCS bucket, and copy the link to clipboard.",
+      "expected_output": "Executes snip.py which invokes screencapture, uploads to GCS, and copies the authenticated URL to the clipboard.",
+      "files": [],
+      "expectations": [
+        "Uses snip.py to capture and upload the image",
+        "Enforces GCP Free Tier limits and safe usage caps",
+        "Copies the authenticated storage.cloud.google.com URL to macOS clipboard"
+      ],
+      "expected_command_patterns": [
+        "snip\\.py"
+      ],
+      "forbidden_command_patterns": [
+        "gcloud storage cp"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Check my current Free Tier usage and storage quota for sharing snips.",
+      "expected_output": "Executes snip.py with the --usage flag to display Cloud Monitoring API metrics and local quota status.",
+      "files": [],
+      "expectations": [
+        "Runs snip.py with the --usage flag",
+        "Reports monthly upload count and 30-day API requests from Cloud Monitoring",
+        "Confirms zero expected billing cost"
+      ],
+      "expected_command_patterns": [
+        "snip\\.py.*--usage"
+      ],
+      "forbidden_command_patterns": []
+    }
+  ]
+}
