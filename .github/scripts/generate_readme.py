@@ -25,14 +25,14 @@ from pathlib import Path
 from typing import Any
 
 
-def parse_frontmatter(content: str) -> dict[str, Any]:
+def parse_frontmatter(content: str) -> Mapping[str, Any]:
     """Parses YAML frontmatter without external dependencies.
 
     Args:
         content: Raw markdown text containing frontmatter between '---' markers.
 
     Returns:
-        Dictionary containing parsed key-value pairs and block scalars.
+        Mapping containing parsed key-value pairs and block scalars.
     """
     match = re.match(r"^---\r?\n(.*?)\r?\n---\r?\n(.*)$", content, re.DOTALL)
     if not match:
@@ -218,14 +218,14 @@ def format_markdown(file_path: Path) -> None:
         )
 
 
-def collect_skills(repo_root: Path) -> list[dict[str, Any]]:
+def collect_skills(repo_root: Path) -> Sequence[Mapping[str, Any]]:
     """Discovers all skills with SKILL.md in immediate subdirectories.
 
     Args:
         repo_root: Path to repository root directory.
 
     Returns:
-        List of mappings containing parsed skill metadata and component flags.
+        Sequence of mappings containing parsed skill metadata and component flags.
     """
     skills = []
     for item in sorted(repo_root.iterdir()):

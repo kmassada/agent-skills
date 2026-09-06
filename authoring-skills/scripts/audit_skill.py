@@ -42,14 +42,16 @@ class AuditResult:
         return len(self.errors) == 0
 
 
-def parse_frontmatter(content: str) -> tuple[dict[str, Any], str, list[str]]:
+def parse_frontmatter(
+    content: str,
+) -> tuple[Mapping[str, Any], str, Sequence[str]]:
     """Extracts and parses YAML frontmatter without external YAML dependencies.
 
     Args:
         content: Raw markdown text containing frontmatter between '---' markers.
 
     Returns:
-        Tuple of (parsed_dict, raw_frontmatter_text, errors_list).
+        Tuple of (parsed_mapping, raw_frontmatter_text, errors_sequence).
     """
     errors: list[str] = []
     if not content.startswith("---"):
