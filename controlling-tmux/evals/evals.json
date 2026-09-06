@@ -217,6 +217,104 @@
       "forbidden_command_patterns": [
         "tmux select-pane"
       ]
+    },
+    {
+      "id": 15,
+      "prompt": "Paste the multiline migration script into pane %2",
+      "expected_output": "Loads the script into a tmux buffer and pastes it into pane %2 using paste-buffer rather than sending raw multiline keys.",
+      "files": [],
+      "expectations": [
+        "The multiline content is loaded into a tmux buffer using tmux load-buffer",
+        "The buffer is pasted into pane %2 using tmux paste-buffer -t %2",
+        "The agent does NOT send raw multiline commands via tmux send-keys"
+      ],
+      "expected_command_patterns": [
+        "tmux load-buffer",
+        "tmux paste-buffer -t %2"
+      ],
+      "forbidden_command_patterns": [
+        "tmux send-keys"
+      ]
+    },
+    {
+      "id": 16,
+      "prompt": "Split a full-width pane across the bottom of the window",
+      "expected_output": "Splits a full-width vertical pane spanning the bottom of the window and captures its pane ID.",
+      "files": [],
+      "expectations": [
+        "The agent creates a full-width pane using tmux split-window -f -v",
+        "The agent captures the resulting pane ID using -P -F '#{pane_id}'",
+        "The agent does NOT create a separate new window"
+      ],
+      "expected_command_patterns": [
+        "tmux split-window -f -v.*-P -F ['\"]#\\{pane_id\\}['\"]"
+      ],
+      "forbidden_command_patterns": [
+        "tmux new-window"
+      ]
+    },
+    {
+      "id": 17,
+      "prompt": "Create a new detached tmux session named worker",
+      "expected_output": "Creates a new detached tmux session named worker without attaching or switching current focus.",
+      "files": [],
+      "expectations": [
+        "The agent creates a detached session using tmux new-session -d -s worker",
+        "The agent does NOT switch into the session or disrupt the current window"
+      ],
+      "expected_command_patterns": [
+        "tmux new-session -d -s worker"
+      ],
+      "forbidden_command_patterns": [
+        "tmux new-window"
+      ]
+    },
+    {
+      "id": 18,
+      "prompt": "Resume the most recent agy conversation in a new window",
+      "expected_output": "Spawns a detached window running agy with --continue or dispatches via dispatch_agent.py --continue.",
+      "files": [],
+      "expectations": [
+        "The agent creates a new window with agy --continue or calls dispatch_agent.py --continue",
+        "The agent does NOT run agy --continue directly in the current subshell"
+      ],
+      "expected_command_patterns": [
+        "(tmux new-window.*agy.*--continue|dispatch_agent\\.py.*--continue)"
+      ],
+      "forbidden_command_patterns": [
+        "^agy --continue"
+      ]
+    },
+    {
+      "id": 19,
+      "prompt": "How do I rebase my branch on origin main?",
+      "expected_output": "Explains the Git rebase workflow without executing any tmux commands.",
+      "files": [],
+      "expectations": [
+        "The agent answers the Git query directly without executing tmux commands",
+        "The agent does NOT execute tmux commands"
+      ],
+      "expected_command_patterns": [],
+      "forbidden_command_patterns": [
+        "tmux"
+      ]
+    },
+    {
+      "id": 20,
+      "prompt": "Read what is in pane %2 without switching focus",
+      "expected_output": "Silently reads the contents of pane %2 using capture-pane without stealing focus.",
+      "files": [],
+      "expectations": [
+        "The agent captures the pane content using tmux capture-pane -t %2 -p",
+        "The agent does NOT switch focus with select-pane or select-window"
+      ],
+      "expected_command_patterns": [
+        "tmux capture-pane -t %2 -p"
+      ],
+      "forbidden_command_patterns": [
+        "tmux select-pane",
+        "tmux select-window"
+      ]
     }
   ]
 }

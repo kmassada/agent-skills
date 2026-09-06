@@ -5,6 +5,7 @@
 # ///
 """Companion unit tests for dispatch_agent.py."""
 
+import io
 import json
 import unittest
 from collections.abc import Sequence
@@ -72,6 +73,17 @@ class TestDispatchAgent(unittest.TestCase):
         cmd = build_agent_command(prompt="Task", extra_flags=extra)
         self.assertIn("--add-dir /tmp/project", cmd)
 
+    def test_build_agent_command_conversation_with_agent_and_model(self) -> None:
+        """Should include agent and model flags when resuming conversation."""
+        cmd = build_agent_command(
+            conversation_id="conv-12345",
+            agent_name="db-specialist",
+            model="pro",
+        )
+        self.assertIn("--conversation conv-12345", cmd)
+        self.assertIn("--agent db-specialist", cmd)
+        self.assertIn("--model pro", cmd)
+
     def test_run_command_safely(self) -> None:
         """Should run a pure subprocess command safely."""
         code, stdout, stderr = run_command_safely(["echo", "hello world"])
@@ -110,7 +122,29 @@ class TestDispatchAgent(unittest.TestCase):
         self.assertEqual(conv_id, "c-plain-67890")
 
     @mock.patch("dispatch_agent.run_command_safely")
-    def test_create_api_conversation_failure(self, mock_run: mock.MagicMock) -> None:
+    def test_create_api_conversation_malformed_json_fallback(
+        self, mock_run: mock.MagicMock
+    ) -> None:
+        """Should fall back to plain text when agentapi outputs malformed JSON."""
+        mock_run.return_value = (0, "not-json-conv-12345\n", "")
+        conv_id = create_api_conversation("Start conversation")
+        self.assertEqual(conv_id, "not-json-conv-12345")
+
+    @mock.patch("sys.stderr", new_callable=io.StringIO)
+    @mock.patch("dispatch_agent.run_command_safely")
+    def test_create_api_conversation_empty_stdout(
+        self, mock_run: mock.MagicMock, _mock_err: io.StringIO
+    ) -> None:
+        """Should return None when agentapi outputs empty stdout."""
+        mock_run.return_value = (0, "", "")
+        conv_id = create_api_conversation("Start conversation")
+        self.assertIsNone(conv_id)
+
+    @mock.patch("sys.stderr", new_callable=io.StringIO)
+    @mock.patch("dispatch_agent.run_command_safely")
+    def test_create_api_conversation_failure(
+        self, mock_run: mock.MagicMock, _mock_err: io.StringIO
+    ) -> None:
         """Should return None on non-zero exit code."""
         mock_run.return_value = (1, "", "API connection error")
         conv_id = create_api_conversation("Failing task")
@@ -131,6 +165,31 @@ class TestDispatchAgent(unittest.TestCase):
         self.assertEqual(res["window_id"], "@15")
         self.assertEqual(res["pane_id"], "%42")
         self.assertEqual(res["title"], "my-window")
+
+    def test_dispatch_to_tmux_custom_cwd_resolution(self) -> None:
+        """Should resolve custom --cwd directory into full path in tmux command."""
+        target_dir = Path("/tmp")
+        res = dispatch_to_tmux(
+            command_str="agy -i 'Task'",
+            title="cwd-window",
+            dispatch_mode="window",
+            cwd=target_dir,
+            dry_run=True,
+        )
+        resolved = str(target_dir.resolve())
+        self.assertIn(f"-c {resolved}", res["command"])
+
+    def test_dispatch_to_tmux_focus_omits_detached_flag(self) -> None:
+        """Should omit detached flag -d when focus is requested."""
+        res = dispatch_to_tmux(
+            command_str="agy -i 'Task'",
+            title="focused-window",
+            dispatch_mode="window",
+            detached=False,
+            dry_run=True,
+        )
+        tokens = res["command"].split()
+        self.assertNotIn("-d", tokens)
 
     @mock.patch("dispatch_agent.run_command_safely")
     def test_dispatch_to_tmux_split_h_success(self, mock_run: mock.MagicMock) -> None:
@@ -197,13 +256,17 @@ class TestDispatchAgent(unittest.TestCase):
         self.assertEqual(args.method, "interactive")
         self.assertFalse(args.focus)
 
-    def test_main_missing_required_args(self) -> None:
+    @mock.patch("sys.stderr", new_callable=io.StringIO)
+    def test_main_missing_required_args(self, _mock_err: io.StringIO) -> None:
         """Should exit with 1 when no prompt, conversation, or continue is provided."""
         code = main([])
         self.assertEqual(code, 1)
 
+    @mock.patch("sys.stdout", new_callable=io.StringIO)
     @mock.patch("dispatch_agent.dispatch_to_tmux")
-    def test_main_success_flow(self, mock_dispatch: mock.MagicMock) -> None:
+    def test_main_success_flow(
+        self, mock_dispatch: mock.MagicMock, _mock_out: io.StringIO
+    ) -> None:
         """Should execute full dispatch flow cleanly."""
         mock_dispatch.return_value = {
             "status": "created",
@@ -232,7 +295,8 @@ class TestDispatchAgent(unittest.TestCase):
         args = parse_arguments(["--prompt", "Hi", "--socket", "custom_sock"])
         self.assertEqual(args.socket, "custom_sock")
 
-    def test_main_dry_run_json(self) -> None:
+    @mock.patch("sys.stdout", new_callable=io.StringIO)
+    def test_main_dry_run_json(self, _mock_out: io.StringIO) -> None:
         """Should output dry run JSON cleanly."""
         code = main(["--prompt", "Run build", "--dry-run", "--json"])
         self.assertEqual(code, 0)

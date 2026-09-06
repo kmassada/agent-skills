@@ -67,15 +67,18 @@ def list_panes(socket: str | None = None) -> Sequence[Mapping[str, Any]]:
             continue
         parts = line.split()
         if len(parts) == 5:
-            panes.append(
-                {
-                    "id": parts[0],
-                    "left": int(parts[1]),
-                    "top": int(parts[2]),
-                    "right": int(parts[3]),
-                    "bottom": int(parts[4]),
-                }
-            )
+            try:
+                panes.append(
+                    {
+                        "id": parts[0],
+                        "left": int(parts[1]),
+                        "top": int(parts[2]),
+                        "right": int(parts[3]),
+                        "bottom": int(parts[4]),
+                    }
+                )
+            except ValueError:
+                continue
     return panes
 
 
@@ -136,7 +139,7 @@ def find_target_pane(
     if not candidates:
         return None
 
-    candidates.sort(key=lambda x: x[0])
+    candidates.sort(key=lambda x: (x[0], x[1]))
     return candidates[0][1]
 
 

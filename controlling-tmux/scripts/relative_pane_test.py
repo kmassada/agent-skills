@@ -78,6 +78,21 @@ class RelativePaneTest(unittest.TestCase):
         self.assertEqual(target_0, "%2")
         self.assertEqual(target_1, "%2")
 
+    def test_origin_pane_not_found_in_layout(self) -> None:
+        """Should return None when origin ID is absent from layout or layout is empty."""
+        self.assertIsNone(find_target_pane(self.panes, "%999", "under"))
+        self.assertIsNone(find_target_pane([], "%0", "right"))
+
+    def test_find_target_tie_breaking_identical_distances(self) -> None:
+        """Should deterministically break ties by pane ID when distances match."""
+        panes = [
+            {"id": "%0", "left": 0, "top": 0, "right": 50, "bottom": 50},
+            {"id": "%2", "left": 51, "top": 0, "right": 100, "bottom": 50},
+            {"id": "%1", "left": 51, "top": 0, "right": 100, "bottom": 50},
+        ]
+        target = find_target_pane(panes, "%0", "right")
+        self.assertEqual(target, "%1")
+
     @mock.patch.dict("os.environ", {"TMUX_PANE": "%42"})
     def test_get_current_pane_id_from_env(self) -> None:
         """Should retrieve pane ID from TMUX_PANE environment variable."""
@@ -96,6 +111,23 @@ class RelativePaneTest(unittest.TestCase):
         self.assertEqual(get_current_pane_id(), "%7")
         mock_run.assert_called_once()
 
+    @mock.patch.dict("os.environ", {}, clear=True)
+    @mock.patch("subprocess.run")
+    def test_get_current_pane_id_with_socket(self, mock_run: mock.MagicMock) -> None:
+        """Should query tmux with socket flag when TMUX_PANE is unset."""
+        mock_proc = mock.create_autospec(subprocess.CompletedProcess, instance=True)
+        mock_proc.stdout = "%5\n"
+        mock_run.return_value = mock_proc
+
+        pane_id = get_current_pane_id(socket="custom_eval_sock")
+        self.assertEqual(pane_id, "%5")
+        mock_run.assert_called_once_with(
+            ["tmux", "-L", "custom_eval_sock", "display-message", "-p", "#{pane_id}"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
     @mock.patch("subprocess.run")
     def test_list_panes_parsing(self, mock_run: mock.MagicMock) -> None:
         """Should parse tmux list-panes output correctly."""
@@ -107,6 +139,27 @@ class RelativePaneTest(unittest.TestCase):
         self.assertEqual(len(panes), 2)
         self.assertEqual(panes[0]["id"], "%0")
         self.assertEqual(panes[1]["right"], 160)
+
+    @mock.patch("subprocess.run")
+    def test_list_panes_malformed_lines(self, mock_run: mock.MagicMock) -> None:
+        """Should skip malformed geometry lines with non-integers or fewer parts."""
+        mock_proc = mock.create_autospec(subprocess.CompletedProcess, instance=True)
+        mock_proc.stdout = "%0 bad_coord 0 80 24\n%1 0 0 50\n%2 81 0 160 24\n"
+        mock_run.return_value = mock_proc
+
+        panes = list_panes()
+        self.assertEqual(len(panes), 1)
+        self.assertEqual(panes[0]["id"], "%2")
+
+    @mock.patch("subprocess.run")
+    def test_list_panes_empty_output(self, mock_run: mock.MagicMock) -> None:
+        """Should return empty list when tmux list-panes output is empty."""
+        mock_proc = mock.create_autospec(subprocess.CompletedProcess, instance=True)
+        mock_proc.stdout = ""
+        mock_run.return_value = mock_proc
+
+        panes = list_panes()
+        self.assertEqual(panes, [])
 
     @mock.patch.dict("os.environ", {}, clear=True)
     @mock.patch("relative_pane.get_current_pane_id", return_value=None)

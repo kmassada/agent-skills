@@ -119,7 +119,110 @@ class RunEvalTest(unittest.TestCase):
         evals_path = Path(__file__).parent / "evals.json"
         skill_name, cases = load_dataset(evals_path)
         self.assertEqual(skill_name, "controlling-tmux")
-        self.assertEqual(len(cases), 14)
+        self.assertEqual(len(cases), 20)
+
+    def test_evaluate_commands_multiline_paste_patterns(self) -> None:
+        """Should validate load-buffer/paste-buffer and forbid raw send-keys."""
+        valid_cmds = [
+            "tmux load-buffer /tmp/script.sql",
+            "tmux paste-buffer -t %2",
+        ]
+        expected = ["tmux load-buffer", "tmux paste-buffer -t %2"]
+        forbidden = ["tmux send-keys"]
+        passed, failures = evaluate_commands(valid_cmds, expected, forbidden)
+        self.assertTrue(passed)
+        self.assertEqual(len(failures), 0)
+
+        invalid_cmds = [
+            "tmux load-buffer /tmp/script.sql",
+            "tmux paste-buffer -t %2",
+            "tmux send-keys -t %2 'SELECT 1;' C-m",
+        ]
+        passed, failures = evaluate_commands(invalid_cmds, expected, forbidden)
+        self.assertFalse(passed)
+        self.assertTrue(any("Triggered forbidden anti-pattern" in f for f in failures))
+
+    def test_evaluate_commands_full_width_split_patterns(self) -> None:
+        """Should validate full-width split flag -f and forbid new-window."""
+        valid_cmds = ["tmux split-window -f -v -t \"$TMUX_PANE\" -P -F '#{pane_id}'"]
+        expected = [r"tmux split-window -f -v.*-P -F ['\"]#\{pane_id\}['\"]"]
+        forbidden = ["tmux new-window"]
+        passed, failures = evaluate_commands(valid_cmds, expected, forbidden)
+        self.assertTrue(passed)
+        self.assertEqual(len(failures), 0)
+
+        invalid_cmds = [
+            "tmux new-window -n worker",
+            "tmux split-window -f -v -t \"$TMUX_PANE\" -P -F '#{pane_id}'",
+        ]
+        passed, failures = evaluate_commands(invalid_cmds, expected, forbidden)
+        self.assertFalse(passed)
+        self.assertTrue(any("Triggered forbidden anti-pattern" in f for f in failures))
+
+    def test_evaluate_commands_detached_session_patterns(self) -> None:
+        """Should validate new-session -d -s and forbid new-window."""
+        valid_cmds = ["tmux new-session -d -s worker"]
+        expected = ["tmux new-session -d -s worker"]
+        forbidden = ["tmux new-window"]
+        passed, failures = evaluate_commands(valid_cmds, expected, forbidden)
+        self.assertTrue(passed)
+        self.assertEqual(len(failures), 0)
+
+        invalid_cmds = ["tmux new-window -n worker"]
+        passed, failures = evaluate_commands(invalid_cmds, expected, forbidden)
+        self.assertFalse(passed)
+
+    def test_evaluate_commands_resume_conversation_patterns(self) -> None:
+        """Should validate detached window resume or dispatch_agent.py --continue."""
+        valid_cmds_tmux = ["tmux new-window -d -n agy 'agy --continue'"]
+        valid_cmds_script = ["python3 scripts/dispatch_agent.py --continue"]
+        expected = [
+            r"(tmux new-window.*agy.*--continue|dispatch_agent\.py.*--continue)"
+        ]
+        forbidden = [r"^agy --continue"]
+
+        passed_tmux, _ = evaluate_commands(valid_cmds_tmux, expected, forbidden)
+        self.assertTrue(passed_tmux)
+
+        passed_script, _ = evaluate_commands(valid_cmds_script, expected, forbidden)
+        self.assertTrue(passed_script)
+
+        invalid_cmds = ["agy --continue"]
+        passed, failures = evaluate_commands(invalid_cmds, expected, forbidden)
+        self.assertFalse(passed)
+        self.assertTrue(any("Triggered forbidden anti-pattern" in f for f in failures))
+
+    def test_evaluate_commands_negative_query_patterns(self) -> None:
+        """Should forbid any tmux invocation on non-tmux developer questions."""
+        valid_cmds = ["git status"]
+        expected: list[str] = []
+        forbidden = ["tmux"]
+        passed, failures = evaluate_commands(valid_cmds, expected, forbidden)
+        self.assertTrue(passed)
+        self.assertEqual(len(failures), 0)
+
+        invalid_cmds = ["tmux display-message 'hello'"]
+        passed, failures = evaluate_commands(invalid_cmds, expected, forbidden)
+        self.assertFalse(passed)
+        self.assertTrue(any("Triggered forbidden anti-pattern" in f for f in failures))
+
+    def test_evaluate_commands_silent_read_focus_preservation_patterns(self) -> None:
+        """Should validate capture-pane and strictly forbid select-pane/window."""
+        valid_cmds = ["tmux capture-pane -t %2 -p"]
+        expected = ["tmux capture-pane -t %2 -p"]
+        forbidden = ["tmux select-pane", "tmux select-window"]
+
+        passed, failures = evaluate_commands(valid_cmds, expected, forbidden)
+        self.assertTrue(passed)
+        self.assertEqual(len(failures), 0)
+
+        invalid_cmds = [
+            "tmux select-pane -t %2",
+            "tmux capture-pane -t %2 -p",
+        ]
+        passed, failures = evaluate_commands(invalid_cmds, expected, forbidden)
+        self.assertFalse(passed)
+        self.assertTrue(any("Triggered forbidden anti-pattern" in f for f in failures))
 
     @mock.patch("subprocess.run")
     def test_setup_dummy_tmux_mocked(self, mock_run: mock.MagicMock) -> None:
