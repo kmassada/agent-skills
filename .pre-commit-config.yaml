@@ -32,17 +32,15 @@ repos:
 
       - id: ruff-check
         name: Lint Python with ruff check
-        entry: uvx ruff check .
+        entry: uvx ruff check
         language: system
         types: [python]
-        pass_filenames: false
 
       - id: ruff-format
         name: Check Python formatting with ruff format
-        entry: uvx ruff format --check .
+        entry: uvx ruff format --check
         language: system
         types: [python]
-        pass_filenames: false
 
       - id: pyright-check
         name: Check Python types with pyright
@@ -51,14 +49,27 @@ repos:
         types: [python]
         pass_filenames: false
 
-      - id: python-tests
-        name: Run Python unit tests
+      - id: writing-markdown-tests
+        name: Run writing-markdown companion tests
         entry:
           sh -c 'python3 writing-markdown/scripts/lint_ascii_test.py && python3
-          writing-markdown/evals/run_eval_test.py && python3
-          writing-python/scripts/check_python_test.py && python3
-          writing-python/evals/run_eval_test.py && python3
-          .github/scripts/generate_readme_test.py'
+          writing-markdown/evals/run_eval_test.py'
         language: system
-        types: [python]
+        files: ^writing-markdown/
+        pass_filenames: false
+
+      - id: writing-python-tests
+        name: Run writing-python companion tests
+        entry:
+          sh -c 'python3 writing-python/scripts/check_python_test.py && python3
+          writing-python/evals/run_eval_test.py'
+        language: system
+        files: ^writing-python/
+        pass_filenames: false
+
+      - id: catalog-script-tests
+        name: Run catalog generator companion tests
+        entry: python3 .github/scripts/generate_readme_test.py
+        language: system
+        files: ^(\.github/|README\.md)
         pass_filenames: false

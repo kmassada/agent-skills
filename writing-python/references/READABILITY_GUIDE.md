@@ -140,11 +140,13 @@ Ruff using `[tool.ruff.lint.pydocstyle] convention = "google"`.
 
 1. **One-Line Docstrings**: Use when a function's purpose and return are
    obvious.
+
    ```python
    def is_empty(seq: Sequence[object]) -> bool:
        """Returns True if the sequence contains zero elements."""
        return len(seq) == 0
    ```
+
 2. **Multi-Line Docstrings**: Begin with a 1-line summary ending with a period,
    followed by a blank line, optional detailed description, and sections:
    `Args:`, `Returns:`, and `Raises:`.
