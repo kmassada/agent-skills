@@ -5,11 +5,12 @@ compatible with both **Google Antigravity** and **Anthropic Claude Code**.
 
 ---
 
-## Catalog (1 Skills)
+## Catalog (2 Skills)
 
-| Skill                                           | Summary                                                                 | Components                       |
-| :---------------------------------------------- | :---------------------------------------------------------------------- | :------------------------------- |
-| [`writing-markdown`](writing-markdown/SKILL.md) | Guides writing and formatting clean, lint-compliant Markdown documents. | `references`, `evals`, `scripts` |
+| Skill                                           | Summary                                                                                                                                                                                                                                                  | Components                       |
+| :---------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------- |
+| [`writing-markdown`](writing-markdown/SKILL.md) | Guides writing and formatting clean, lint-compliant Markdown documents.                                                                                                                                                                                  | `references`, `evals`, `scripts` |
+| [`writing-python`](writing-python/SKILL.md)     | Enforces modern, idiomatic Python standards, static typing with collections.abc and Pylance/Pyright, open-source readability via Ruff and PEP 8, deterministic execution with uv and PEP 723, companion test discipline, and pre-commit test automation. | `references`, `evals`, `scripts` |
 
 ---
 
@@ -29,6 +30,23 @@ compatible with both **Google Antigravity** and **Anthropic Claude Code**.
   - [`CHEATSHEET.md`](writing-markdown/references/CHEATSHEET.md)
   - [`MARKDOWNLINT_RULES.md`](writing-markdown/references/MARKDOWNLINT_RULES.md)
 - **Scripts**: [`lint_ascii.py`](writing-markdown/scripts/lint_ascii.py)
+
+### [`writing-python`](writing-python/SKILL.md)
+
+> Enforces modern, idiomatic Python standards, static typing with
+> collections.abc and Pylance/Pyright, open-source readability via Ruff and PEP
+> 8, deterministic execution with uv and PEP 723, companion test discipline, and
+> pre-commit test automation. Use when authoring or editing Python scripts,
+> adding type annotations, configuring linters, writing unit tests, or
+> initializing projects. Don't use for non-Python application programming.
+
+- **Directory**: [`writing-python/`](writing-python/)
+- **Evaluations**: [`evals.json`](writing-python/evals/evals.json)
+- **References**:
+  - [`READABILITY_GUIDE.md`](writing-python/references/READABILITY_GUIDE.md)
+  - [`TOOLING_GUIDE.md`](writing-python/references/TOOLING_GUIDE.md)
+  - [`TYPING_GUIDE.md`](writing-python/references/TYPING_GUIDE.md)
+- **Scripts**: [`check_python.py`](writing-python/scripts/check_python.py)
 
 ---
 

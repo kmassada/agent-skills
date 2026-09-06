@@ -1,0 +1,113 @@
+{
+  "skill_name": "writing-python",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Refactor this function signature to accept abstract sequence instead of rigid list: 'def process(items: list[str]) -> list[str]:'",
+      "expected_output": "The argument uses collections.abc.Sequence or Iterable while the return type remains list[str].",
+      "files": [],
+      "expectations": [
+        "Imports Sequence or Iterable from collections.abc",
+        "Function argument is typed as Sequence[str] or Iterable[str]",
+        "Return type remains concrete list[str]",
+        "Does not use deprecated typing.List"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Refactor a function parameter expecting a dictionary config to use collections.abc.Mapping: 'def configure(cfg: dict[str, Any]) -> None:'",
+      "expected_output": "Uses collections.abc.Mapping[str, Any] for the configuration argument.",
+      "files": [],
+      "expectations": [
+        "Imports Mapping from collections.abc",
+        "Parameter is annotated as Mapping[str, Any]",
+        "Does not use deprecated typing.Dict"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Modernize this legacy typing import block: 'from typing import Optional, Union, List, Dict'",
+      "expected_output": "Replaces legacy typing constructs with PEP 604 unions (T | None, A | B) and collections.abc.",
+      "files": [],
+      "expectations": [
+        "Eliminates Optional in favor of T | None",
+        "Eliminates Union in favor of A | B",
+        "Eliminates typing.List and typing.Dict in favor of list / dict or collections.abc"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Fix a Pyright error where 'str | None' is passed to a function expecting 'str'",
+      "expected_output": "Uses an explicit null guard or default fallback (value or '') to satisfy Pyright.",
+      "files": [],
+      "expectations": [
+        "Applies type narrowing via if val is None or val or ''",
+        "Passes Pyright with zero type errors"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Add a companion unit test for a helper script 'scripts/format_data.py'",
+      "expected_output": "Creates scripts/format_data_test.py using standard library unittest with sys.path modification.",
+      "files": [],
+      "expectations": [
+        "Creates a sibling test file named format_data_test.py",
+        "Uses unittest.TestCase from standard library",
+        "Configures sys.path so the module can be run directly or discovered"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Fix a subprocess.run call triggering PLW1510 (missing explicit check argument)",
+      "expected_output": "Explicitly passes check=False or check=True to subprocess.run.",
+      "files": [],
+      "expectations": [
+        "Passes check=False or check=True explicitly to subprocess.run",
+        "Satisfies Ruff rule PLW1510"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Refactor unsafe exception handling: 'try: ... except Exception: pass'",
+      "expected_output": "Catches specific expected exceptions such as (OSError, UnicodeDecodeError) with proper logging or error return.",
+      "files": [],
+      "expectations": [
+        "Eliminates bare except Exception handler",
+        "Catches specific expected exceptions",
+        "Satisfies Ruff rule BLE001"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "Add PEP 723 inline script metadata to a standalone CLI script",
+      "expected_output": "Adds # /// script block with requires-python and dependencies beneath shebang.",
+      "files": [],
+      "expectations": [
+        "Declares # /// script block",
+        "Specifies requires-python >= 3.11",
+        "Declares dependencies list"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "Initialize a clean Python project directory using uv without creating clutter",
+      "expected_output": "Uses uv init with --bare, --no-readme, and --vcs none flags.",
+      "files": [],
+      "expectations": [
+        "Runs uv init --bare --no-readme --vcs none",
+        "Creates only pyproject.toml without extra dummy files"
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "Configure .pre-commit-config.yaml to run Ruff, Pyright, and unit tests locally",
+      "expected_output": "Declares local pre-commit hooks for ruff check, ruff format, pyright, and test execution.",
+      "files": [],
+      "expectations": [
+        "Includes ruff check and ruff format hooks",
+        "Includes pyright static type check hook",
+        "Includes test runner hook executing companion tests"
+      ]
+    }
+  ]
+}
