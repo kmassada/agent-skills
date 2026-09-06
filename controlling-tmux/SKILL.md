@@ -62,12 +62,11 @@ Before taking action, distinguish between windows and panes:
 
 When sending commands to any pane, follow this 4-step sequence:
 
-1. **Inspect & Clear Copy Mode:** Check screen status with
-   `tmux capture-pane -t <pane_id> -p`. If `(search down)`, `(search up)`, or
-   `[0/100]` is present, unjam copy mode:
+1. **Inspect & Clear Copy Mode:** Check deterministic mode state:
 
    ```bash
-   tmux copy-mode -q -t <pane_id>
+   MODE=$(tmux display-message -p -t <pane_id> '#{pane_in_mode}')
+   [ "$MODE" = "1" ] && tmux copy-mode -q -t <pane_id>
    ```
 
 2. **Explicitly Targeted Write:** Send keys with explicit pane targeting:
@@ -76,10 +75,20 @@ When sending commands to any pane, follow this 4-step sequence:
    tmux send-keys -t <pane_id> '<command>' C-m
    ```
 
-3. **Wait:** Pause briefly (1-2s for instant commands, longer for
-   build/startup).
-4. **Verify:** Recapture screen (`tmux capture-pane -t <pane_id> -p`) to verify
-   prompt readiness (`$`, `>`, `%`) or command completion.
+3. **Deterministic Completion Check:** Query `#{pane_current_command}` rather
+   than guessing sleep times:
+
+   ```bash
+   # Returns active process (e.g. pytest, cargo) or idle shell (zsh, bash)
+   tmux display-message -p -t <pane_id> '#{pane_current_command}'
+   ```
+
+4. **Verify & Read Output:** Capture screen, stripping trailing virtual
+   terminal grid blanks:
+
+   ```bash
+   tmux capture-pane -t <pane_id> -p | sed '/^[[:space:]]*$/d' | tail -n 20
+   ```
 
 ### 4. Silent Observation (Zero Focus-Stealing)
 
@@ -90,6 +99,8 @@ When sending commands to any pane, follow this 4-step sequence:
   focus.
 - **Buffer Depth:** By default, `capture-pane` reads visible lines. For history,
   use `-S -100` (last 100 lines) or `-S -` (entire scrollback).
+- **Grid Blank Rows:** Terminal height padding leaves trailing blanks at the
+  bottom. Filter with `sed '/^[[:space:]]*$/d'` before inspecting the tail.
 
 ### 5. Large Input & Multiline Payloads
 

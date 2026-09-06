@@ -13,8 +13,11 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 
-def get_current_pane_id() -> str | None:
+def get_current_pane_id(socket: str | None = None) -> str | None:
     """Returns the current tmux pane ID from environment or display-message.
+
+    Args:
+        socket: Optional tmux socket name.
 
     Returns:
         String identifier (e.g. '%1') or None if not running inside tmux.
@@ -23,8 +26,12 @@ def get_current_pane_id() -> str | None:
     if pane_id:
         return pane_id
     try:
+        cmd = ["tmux"]
+        if socket:
+            cmd.extend(["-L", socket])
+        cmd.extend(["display-message", "-p", "#{pane_id}"])
         res = subprocess.run(
-            ["tmux", "display-message", "-p", "#{pane_id}"],
+            cmd,
             capture_output=True,
             text=True,
             check=True,
@@ -34,18 +41,25 @@ def get_current_pane_id() -> str | None:
         return None
 
 
-def list_panes() -> Sequence[Mapping[str, Any]]:
+def list_panes(socket: str | None = None) -> Sequence[Mapping[str, Any]]:
     """Queries tmux layout and returns sequence of pane geometries.
+
+    Args:
+        socket: Optional tmux socket name.
 
     Returns:
         Sequence of dictionaries with id, left, top, right, and bottom bounds.
     """
-    cmd = [
-        "tmux",
-        "list-panes",
-        "-F",
-        "#{pane_id} #{pane_left} #{pane_top} #{pane_right} #{pane_bottom}",
-    ]
+    cmd = ["tmux"]
+    if socket:
+        cmd.extend(["-L", socket])
+    cmd.extend(
+        [
+            "list-panes",
+            "-F",
+            "#{pane_id} #{pane_left} #{pane_top} #{pane_right} #{pane_bottom}",
+        ]
+    )
     res = subprocess.run(cmd, capture_output=True, text=True, check=True)
     panes: list[dict[str, Any]] = []
     for line in res.stdout.strip().splitlines():
@@ -151,15 +165,21 @@ def main(argv: Sequence[str] | None = None) -> None:
         action="store_true",
         help="Select the target pane automatically in tmux.",
     )
+    parser.add_argument(
+        "--socket",
+        "-L",
+        default=None,
+        help="Optional tmux socket name.",
+    )
 
     args = parser.parse_args(argv)
 
-    origin_id = args.pane or get_current_pane_id()
+    origin_id = args.pane or get_current_pane_id(args.socket)
     if not origin_id:
         print("Error: Could not determine origin pane ID.", file=sys.stderr)
         sys.exit(1)
 
-    panes = list_panes()
+    panes = list_panes(args.socket)
     target_id = find_target_pane(panes, origin_id, args.direction)
 
     if not target_id:
@@ -169,7 +189,11 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     print(target_id)
     if args.select:
-        subprocess.run(["tmux", "select-pane", "-t", target_id], check=True)
+        select_cmd = ["tmux"]
+        if args.socket:
+            select_cmd.extend(["-L", args.socket])
+        select_cmd.extend(["select-pane", "-t", target_id])
+        subprocess.run(select_cmd, check=True)
 
 
 if __name__ == "__main__":

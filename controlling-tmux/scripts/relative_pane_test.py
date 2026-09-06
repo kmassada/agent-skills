@@ -159,6 +159,33 @@ class RelativePaneTest(unittest.TestCase):
         )
         self.assertEqual(mock_stdout.getvalue().strip(), "%1")
 
+    @mock.patch("subprocess.run")
+    @mock.patch("relative_pane.list_panes")
+    @mock.patch("sys.stdout", new_callable=io.StringIO)
+    def test_main_cli_with_socket(
+        self,
+        mock_stdout: io.StringIO,
+        mock_list_panes: mock.MagicMock,
+        mock_run: mock.MagicMock,
+    ) -> None:
+        """Should invoke tmux with -L flag when --socket is passed."""
+        mock_list_panes.return_value = self.panes
+        main(
+            [
+                "--direction",
+                "right",
+                "--pane",
+                "%0",
+                "--select",
+                "--socket",
+                "sock1",
+            ]
+        )
+        mock_run.assert_called_once_with(
+            ["tmux", "-L", "sock1", "select-pane", "-t", "%1"], check=True
+        )
+        self.assertEqual(mock_stdout.getvalue().strip(), "%1")
+
 
 if __name__ == "__main__":
     unittest.main()

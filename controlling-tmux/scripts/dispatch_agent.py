@@ -162,6 +162,7 @@ def dispatch_to_tmux(
     cwd: Path | None = None,
     detached: bool = True,
     dry_run: bool = False,
+    socket: str | None = None,
 ) -> Mapping[str, str]:
     """Executes tmux command to create window or pane running the agent.
 
@@ -173,21 +174,27 @@ def dispatch_to_tmux(
         cwd: Working directory for the pane.
         detached: If True, do not change current client focus.
         dry_run: If True, returns planned commands without running.
+        socket: Optional tmux socket name.
 
     Returns:
         Mapping containing target identifiers (e.g. window_id, pane_id).
     """
     effective_cwd = str(cwd.resolve()) if cwd else os.getcwd()
+    base_cmd = ["tmux"]
+    if socket:
+        base_cmd.extend(["-L", socket])
 
     if dispatch_mode == "window":
-        tmux_cmd = ["tmux", "new-window"]
+        tmux_cmd = list(base_cmd)
+        tmux_cmd.append("new-window")
         if detached:
             tmux_cmd.append("-d")
         tmux_cmd.extend(["-n", title, "-c", effective_cwd, "-P", "-F"])
         tmux_cmd.append("#{window_id} #{pane_id}")
         tmux_cmd.append(command_str)
     elif dispatch_mode == "split-h":
-        tmux_cmd = ["tmux", "split-window", "-h"]
+        tmux_cmd = list(base_cmd)
+        tmux_cmd.extend(["split-window", "-h"])
         if detached:
             tmux_cmd.append("-d")
         if target_pane:
@@ -195,7 +202,8 @@ def dispatch_to_tmux(
         tmux_cmd.extend(["-c", effective_cwd, "-P", "-F", "#{pane_id}"])
         tmux_cmd.append(command_str)
     elif dispatch_mode == "split-v":
-        tmux_cmd = ["tmux", "split-window", "-v"]
+        tmux_cmd = list(base_cmd)
+        tmux_cmd.extend(["split-window", "-v"])
         if detached:
             tmux_cmd.append("-d")
         if target_pane:
@@ -305,6 +313,11 @@ def parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Switch user focus to the new window/pane (default is detached).",
     )
     parser.add_argument(
+        "--socket",
+        "-L",
+        help="Optional tmux socket name.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print planned commands as JSON without executing.",
@@ -374,6 +387,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             cwd=args.cwd,
             detached=not args.focus,
             dry_run=args.dry_run,
+            socket=args.socket,
         )
     except (RuntimeError, ValueError) as exc:
         sys.stderr.write(f"Dispatch error: {exc}\n")

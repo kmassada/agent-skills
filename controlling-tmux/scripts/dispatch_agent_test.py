@@ -215,6 +215,23 @@ class TestDispatchAgent(unittest.TestCase):
         self.assertEqual(code, 0)
         mock_dispatch.assert_called_once()
 
+    def test_dispatch_to_tmux_with_socket(self) -> None:
+        """Should include -L flag when socket is specified."""
+        res = dispatch_to_tmux(
+            command_str="agy -i 'Hello'",
+            title="sock-window",
+            dispatch_mode="window",
+            dry_run=True,
+            socket="mysocket",
+        )
+        self.assertEqual(res["status"], "dry_run")
+        self.assertIn("tmux -L mysocket new-window", res["command"])
+
+    def test_parse_arguments_socket(self) -> None:
+        """Should parse --socket and -L flags."""
+        args = parse_arguments(["--prompt", "Hi", "--socket", "custom_sock"])
+        self.assertEqual(args.socket, "custom_sock")
+
     def test_main_dry_run_json(self) -> None:
         """Should output dry run JSON cleanly."""
         code = main(["--prompt", "Run build", "--dry-run", "--json"])
