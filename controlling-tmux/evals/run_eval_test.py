@@ -119,7 +119,7 @@ class RunEvalTest(unittest.TestCase):
         evals_path = Path(__file__).parent / "evals.json"
         skill_name, cases = load_dataset(evals_path)
         self.assertEqual(skill_name, "controlling-tmux")
-        self.assertEqual(len(cases), 12)
+        self.assertEqual(len(cases), 14)
 
     @mock.patch("subprocess.run")
     def test_setup_dummy_tmux_mocked(self, mock_run: mock.MagicMock) -> None:

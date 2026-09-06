@@ -186,6 +186,37 @@
         "(tmux split-window.*--conversation|dispatch_agent\\.py.*--conversation)"
       ],
       "forbidden_command_patterns": []
+    },
+    {
+      "id": 13,
+      "prompt": "Check if pane %1 is in copy mode and clear it if so",
+      "expected_output": "Inspects #{pane_in_mode} deterministically on pane %1 and unjams copy mode with copy-mode -q.",
+      "files": [],
+      "expectations": [
+        "The agent checks #{pane_in_mode} using tmux display-message",
+        "The agent exits copy mode using tmux copy-mode -q -t %1"
+      ],
+      "expected_command_patterns": [
+        "tmux display-message.*#\\{pane_in_mode\\}",
+        "tmux copy-mode -q -t %1"
+      ],
+      "forbidden_command_patterns": []
+    },
+    {
+      "id": 14,
+      "prompt": "Check whether the process running in pane %3 has finished",
+      "expected_output": "Queries #{pane_current_command} on pane %3 to check whether the process is active or returned to the shell prompt.",
+      "files": [],
+      "expectations": [
+        "The agent inspects #{pane_current_command} using tmux display-message -t %3",
+        "The agent does NOT steal focus with select-pane"
+      ],
+      "expected_command_patterns": [
+        "tmux display-message.*#\\{pane_current_command\\}"
+      ],
+      "forbidden_command_patterns": [
+        "tmux select-pane"
+      ]
     }
   ]
 }
