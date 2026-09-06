@@ -62,7 +62,7 @@ class GenerateReadmeTest(unittest.TestCase):
         )
 
     def test_parse_frontmatter_missing(self):
-        """Should return empty dict if no frontmatter delimiters exist."""
+        """Should return empty mapping if no frontmatter delimiters exist."""
         content = "# Just a normal markdown document\nWith no frontmatter.\n"
         meta = parse_frontmatter(content)
         self.assertEqual(meta, {})
@@ -176,7 +176,7 @@ class GenerateReadmeTest(unittest.TestCase):
         self.assertIn("- **Scripts**: [`tool.py`](my-skill/scripts/tool.py)", details)
 
     def test_parse_frontmatter_unclosed_block(self):
-        """Should return empty dict when frontmatter is unclosed."""
+        """Should return empty mapping when frontmatter is unclosed."""
         content = "---\nname: unclosed-skill\ndescription: Missing closing dashes\n"
         meta = parse_frontmatter(content)
         self.assertEqual(meta, {})

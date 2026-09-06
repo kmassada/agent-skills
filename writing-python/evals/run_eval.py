@@ -136,7 +136,7 @@ def evaluate_static_benchmark(
     """Deterministically validates expected outputs for a test case.
 
     Args:
-        test_case: Evaluation case dictionary from evals.json.
+        test_case: Evaluation case mapping from evals.json.
         verbose: Whether to print intermediate verification steps.
 
     Returns:
@@ -177,7 +177,7 @@ def run_agent_eval(
     """Executes a test case against agy or claude CLI backend.
 
     Args:
-        test_case: Evaluation case dictionary from evals.json.
+        test_case: Evaluation case mapping from evals.json.
         backend: Name of backend executable ("agy" or "claude").
         verbose: Whether to print detailed timing and exit codes.
 
