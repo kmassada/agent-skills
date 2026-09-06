@@ -37,7 +37,15 @@ class TermColor:
 
 
 def check_markdown_expectation(text: str, expectation: str) -> tuple[bool, str]:
-    """Evaluates whether a given markdown text satisfies a specific expectation."""
+    """Evaluates whether a given markdown text satisfies a specific expectation.
+
+    Args:
+        text: Markdown content string to evaluate.
+        expectation: Natural language description of quality rule or pattern.
+
+    Returns:
+        Tuple of (passed_boolean, description_message).
+    """
     exp_lower = expectation.lower()
 
     # MD032: blank line before list
@@ -114,7 +122,15 @@ def check_markdown_expectation(text: str, expectation: str) -> tuple[bool, str]:
 def evaluate_static_benchmark(
     test_case: Mapping[str, Any], verbose: bool = False
 ) -> tuple[bool, list[str]]:
-    """Deterministically validates expected outputs and patterns for a test case."""
+    """Deterministically validates expected outputs and patterns for a test case.
+
+    Args:
+        test_case: Evaluation case dictionary containing id, expectations, etc.
+        verbose: Whether to print intermediate check details.
+
+    Returns:
+        Tuple of (passed_boolean, list_of_failure_messages).
+    """
     test_id = test_case["id"]
     expectations: Sequence[str] = test_case.get("expectations", [])
 
@@ -155,7 +171,16 @@ def evaluate_static_benchmark(
 def run_agent_eval(
     test_case: Mapping[str, Any], backend: str, verbose: bool = False
 ) -> tuple[bool, list[str]]:
-    """Executes a test case against agy or claude CLI backend."""
+    """Executes a test case against agy or claude CLI backend.
+
+    Args:
+        test_case: Evaluation case dictionary containing prompt and expectations.
+        backend: Name of backend executable ("agy" or "claude").
+        verbose: Whether to print execution timing and exit codes.
+
+    Returns:
+        Tuple of (passed_boolean, list_of_failure_messages).
+    """
     prompt = test_case["prompt"]
     cmd: list[str] = []
 
@@ -198,8 +223,12 @@ def run_agent_eval(
     return len(failures) == 0, failures
 
 
-def main() -> None:
-    """CLI entry point for running writing-markdown evaluation benchmarks."""
+def main(argv: Sequence[str] | None = None) -> None:
+    """CLI entry point for running writing-markdown evaluation benchmarks.
+
+    Args:
+        argv: Optional command-line argument sequence; defaults to sys.argv[1:].
+    """
     parser = argparse.ArgumentParser(
         description="Run evaluation benchmarks for writing-markdown skill"
     )
@@ -226,7 +255,7 @@ def main() -> None:
         action="store_true",
         help="Print detailed check messages",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if not args.dataset.is_file():
         print(f"Error: Dataset not found at {args.dataset}", file=sys.stderr)

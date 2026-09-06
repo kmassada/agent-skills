@@ -5,15 +5,17 @@
 # ///
 """Unit tests for lint_ascii.py linter and fixer."""
 
+import io
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 # Ensure sibling scripts can be imported directly
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lint_ascii import process_file
+from lint_ascii import main, process_file
 
 
 class LintAsciiTest(unittest.TestCase):
@@ -106,6 +108,44 @@ class LintAsciiTest(unittest.TestCase):
         count, _ = process_file(test_file, fix=True)
         self.assertEqual(count, 0)
         self.assertIn("❯", test_file.read_text(encoding="utf-8"))
+
+    def test_unreadable_or_missing_file_returns_error(self):
+        """Should handle missing or unreadable file gracefully with error issue."""
+        missing_file = self.dir_path / "non_existent_file.md"
+        count, issues = process_file(missing_file, fix=False)
+        self.assertEqual(count, 1)
+        self.assertEqual(len(issues), 1)
+        self.assertIn("Failed to read", issues[0])
+
+    @mock.patch("sys.stdout", new_callable=io.StringIO)
+    def test_main_cli_clean(self, mock_stdout: io.StringIO):
+        """CLI invocation on clean files should output clean message and exit normally."""
+        test_file = self.dir_path / "clean_cli.md"
+        test_file.write_text("# Clean Title\nClean markdown.\n", encoding="utf-8")
+
+        main([str(test_file)])
+        self.assertIn("Clean! Checked 1 file(s)", mock_stdout.getvalue())
+
+    @mock.patch("sys.stdout", new_callable=io.StringIO)
+    def test_main_cli_with_issues_exits_one(self, mock_stdout: io.StringIO):
+        """CLI invocation with issues without --fix should output issues and exit 1."""
+        test_file = self.dir_path / "dirty_cli.md"
+        test_file.write_text("Wait 1–2s.\n", encoding="utf-8")
+
+        with self.assertRaises(SystemExit) as cm:
+            main([str(test_file)])
+        self.assertEqual(cm.exception.code, 1)
+        self.assertIn("1 issue(s) flagged", mock_stdout.getvalue())
+
+    @mock.patch("sys.stdout", new_callable=io.StringIO)
+    def test_main_cli_with_fix_flag(self, mock_stdout: io.StringIO):
+        """CLI invocation with --fix should fix files and exit cleanly."""
+        test_file = self.dir_path / "fix_cli.md"
+        test_file.write_text("Wait 1–2s.\n", encoding="utf-8")
+
+        main(["--fix", str(test_file)])
+        self.assertIn("1 issue(s) fixed", mock_stdout.getvalue())
+        self.assertEqual(test_file.read_text(encoding="utf-8"), "Wait 1-2s.\n")
 
 
 if __name__ == "__main__":

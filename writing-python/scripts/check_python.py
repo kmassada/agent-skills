@@ -37,6 +37,24 @@ def run_command(cmd: Sequence[str], description: str) -> tuple[bool, str]:
     return proc.returncode == 0, output
 
 
+def get_uv_tool_cmd(tool: str) -> list[str] | None:
+    """Builds execution command for a tool via uvx or uv.
+
+    Args:
+        tool: Tool name to execute (e.g. 'ruff', 'pyright').
+
+    Returns:
+        Command prefix list if uv/uvx is found, or None.
+    """
+    uvx_bin = shutil.which("uvx")
+    if uvx_bin:
+        return [uvx_bin, tool]
+    uv_bin = shutil.which("uv")
+    if uv_bin:
+        return [uv_bin, "tool", "run", tool]
+    return None
+
+
 def check_ruff(target_dir: Path) -> tuple[bool, str]:
     """Verifies style and formatting with ruff.
 
@@ -46,18 +64,18 @@ def check_ruff(target_dir: Path) -> tuple[bool, str]:
     Returns:
         Tuple of (success_boolean, status_message).
     """
-    uv_bin = shutil.which("uvx") or shutil.which("uv")
-    if not uv_bin:
+    cmd_prefix = get_uv_tool_cmd("ruff")
+    if not cmd_prefix:
         return False, "'uv' or 'uvx' not found in PATH"
 
     ok_check, out_check = run_command(
-        [uv_bin, "ruff", "check", str(target_dir)], "ruff check"
+        cmd_prefix + ["check", str(target_dir)], "ruff check"
     )
     if not ok_check:
         return False, out_check
 
     ok_fmt, out_fmt = run_command(
-        [uv_bin, "ruff", "format", "--check", str(target_dir)],
+        cmd_prefix + ["format", "--check", str(target_dir)],
         "ruff format check",
     )
     if not ok_fmt:
@@ -75,11 +93,11 @@ def check_pyright(target_dir: Path) -> tuple[bool, str]:
     Returns:
         Tuple of (success_boolean, status_message).
     """
-    uv_bin = shutil.which("uvx") or shutil.which("uv")
-    if not uv_bin:
+    cmd_prefix = get_uv_tool_cmd("pyright")
+    if not cmd_prefix:
         return False, "'uv' or 'uvx' not found in PATH"
 
-    return run_command([uv_bin, "pyright", str(target_dir)], "pyright")
+    return run_command(cmd_prefix + [str(target_dir)], "pyright")
 
 
 def run_tests(test_files: Sequence[Path]) -> tuple[bool, list[str]]:
@@ -101,8 +119,12 @@ def run_tests(test_files: Sequence[Path]) -> tuple[bool, list[str]]:
     return len(failures) == 0, failures
 
 
-def main() -> None:
-    """CLI entry point for verifying repository Python quality gates."""
+def main(argv: Sequence[str] | None = None) -> None:
+    """CLI entry point for verifying repository Python quality gates.
+
+    Args:
+        argv: Optional command-line argument sequence; defaults to sys.argv[1:].
+    """
     parser = argparse.ArgumentParser(
         description="Verify Python code against Ruff, Pyright, and unit tests"
     )
@@ -113,7 +135,7 @@ def main() -> None:
         default=Path("."),
         help="Target directory to inspect",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     target_dir = args.target.resolve()
 
     print(f"Checking Python quality gates for: {target_dir}\n")

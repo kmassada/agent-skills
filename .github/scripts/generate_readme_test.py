@@ -5,10 +5,12 @@
 # ///
 """Unit tests for generate_readme.py catalog generator."""
 
+import io
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 # Ensure sibling scripts can be imported directly
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -17,6 +19,7 @@ from generate_readme import (
     collect_skills,
     generate_details,
     generate_table,
+    main,
     parse_frontmatter,
     sanitize_ascii,
     wrap_text,
@@ -171,6 +174,83 @@ class GenerateReadmeTest(unittest.TestCase):
         self.assertIn("- **References**:", details)
         self.assertIn("  - [`REF1.md`](my-skill/references/REF1.md)", details)
         self.assertIn("- **Scripts**: [`tool.py`](my-skill/scripts/tool.py)", details)
+
+    def test_parse_frontmatter_unclosed_block(self):
+        """Should return empty dict when frontmatter is unclosed."""
+        content = "---\nname: unclosed-skill\ndescription: Missing closing dashes\n"
+        meta = parse_frontmatter(content)
+        self.assertEqual(meta, {})
+
+    @mock.patch("sys.stderr", new_callable=io.StringIO)
+    def test_main_cli_check_missing_output(self, mock_stderr: io.StringIO):
+        """Should exit 1 when check mode finds missing output file."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            missing_out = Path(temp_dir) / "NONEXISTENT_README.md"
+            with self.assertRaises(SystemExit) as cm:
+                main(["--output", str(missing_out), "--check"])
+            self.assertEqual(cm.exception.code, 1)
+            self.assertIn("does not exist", mock_stderr.getvalue())
+
+    @mock.patch("sys.stderr", new_callable=io.StringIO)
+    @mock.patch("sys.stdout", new_callable=io.StringIO)
+    def test_main_cli_generation_and_check(
+        self, mock_stdout: io.StringIO, mock_stderr: io.StringIO
+    ):
+        """Should generate README and verify it stays in sync via --check."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            sandbox = Path(temp_dir)
+            out_file = sandbox / "README.md"
+
+            # Create mock skill directory
+            sk = sandbox / "dummy-skill"
+            sk.mkdir()
+            (sk / "SKILL.md").write_text(
+                "---\nname: dummy-skill\ndescription: Dummy skill summary.\n---\n",
+                encoding="utf-8",
+            )
+
+            # Generate README without external formatters
+            main(
+                [
+                    "--repo-root",
+                    str(sandbox),
+                    "--output",
+                    str(out_file),
+                    "--no-format",
+                ]
+            )
+            self.assertTrue(out_file.is_file())
+            content = out_file.read_text(encoding="utf-8")
+            self.assertIn("dummy-skill", content)
+
+            # Verify --check passes when content matches
+            with self.assertRaises(SystemExit) as cm:
+                main(
+                    [
+                        "--repo-root",
+                        str(sandbox),
+                        "--output",
+                        str(out_file),
+                        "--check",
+                        "--no-format",
+                    ]
+                )
+            self.assertEqual(cm.exception.code, 0)
+
+            # Modify output file to make it out of date
+            out_file.write_text("Stale content\n", encoding="utf-8")
+            with self.assertRaises(SystemExit) as cm:
+                main(
+                    [
+                        "--repo-root",
+                        str(sandbox),
+                        "--output",
+                        str(out_file),
+                        "--check",
+                        "--no-format",
+                    ]
+                )
+            self.assertEqual(cm.exception.code, 1)
 
 
 if __name__ == "__main__":

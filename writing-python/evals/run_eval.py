@@ -226,8 +226,12 @@ def run_agent_eval(
     return len(failures) == 0, failures
 
 
-def main() -> None:
-    """CLI entry point for running writing-python evaluation benchmarks."""
+def main(argv: Sequence[str] | None = None) -> None:
+    """CLI entry point for running writing-python evaluation benchmarks.
+
+    Args:
+        argv: Optional command-line argument sequence; defaults to sys.argv[1:].
+    """
     parser = argparse.ArgumentParser(
         description="Run evaluation benchmarks for writing-python skill"
     )
@@ -254,7 +258,7 @@ def main() -> None:
         action="store_true",
         help="Print detailed check messages",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if not args.dataset.is_file():
         print(f"Error: Dataset not found at {args.dataset}", file=sys.stderr)

@@ -11,6 +11,7 @@ and non-basic ASCII glyphs that trigger VS Code's unicodeHighlight warnings.
 
 import argparse
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 REPLACEMENTS = {
@@ -35,7 +36,16 @@ ALLOWED_BOX_DRAWING = set("─│┌┐└┘├┤┬┴┼═║╒╓╔╕�
 def process_file(
     file_path: Path, fix: bool, check_all: bool = False
 ) -> tuple[int, list[str]]:
-    """Inspects and optionally fixes non-basic ASCII characters in a file."""
+    """Inspects and optionally fixes non-basic ASCII characters in a file.
+
+    Args:
+        file_path: Target Markdown file path to inspect.
+        fix: Whether to write corrected ASCII characters back to disk.
+        check_all: Whether to flag Unicode box-drawing tree characters.
+
+    Returns:
+        Tuple of (issue_count, list_of_issue_descriptions).
+    """
     try:
         content = file_path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as e:
@@ -80,8 +90,12 @@ def process_file(
     return len(issues), issues
 
 
-def main() -> None:
-    """CLI entry point for ASCII linting and fixing utility."""
+def main(argv: Sequence[str] | None = None) -> None:
+    """CLI entry point for ASCII linting and fixing utility.
+
+    Args:
+        argv: Optional command-line argument sequence; defaults to sys.argv[1:].
+    """
     parser = argparse.ArgumentParser(
         description="Lint and fix non-basic ASCII characters in Markdown"
     )
@@ -101,7 +115,7 @@ def main() -> None:
         action="store_true",
         help="Also flag standard box-drawing tree characters",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     total_issues = 0
     files_checked = 0

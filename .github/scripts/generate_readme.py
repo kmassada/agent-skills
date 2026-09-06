@@ -19,13 +19,21 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 
 def parse_frontmatter(content: str) -> dict[str, Any]:
-    """Parses YAML frontmatter without external dependencies."""
+    """Parses YAML frontmatter without external dependencies.
+
+    Args:
+        content: Raw markdown text containing frontmatter between '---' markers.
+
+    Returns:
+        Dictionary containing parsed key-value pairs and block scalars.
+    """
     match = re.match(r"^---\r?\n(.*?)\r?\n---\r?\n(.*)$", content, re.DOTALL)
     if not match:
         return {}
@@ -95,7 +103,16 @@ def parse_frontmatter(content: str) -> dict[str, Any]:
 
 
 def wrap_text(text: str, width: int = 80, prefix: str = "") -> str:
-    """Hard-wraps text to a given width with an optional prefix."""
+    """Hard-wraps text to a given width with an optional prefix.
+
+    Args:
+        text: Input text string to wrap.
+        width: Maximum line length in characters.
+        prefix: Line prefix string applied to wrapped lines.
+
+    Returns:
+        Hard-wrapped multiline string.
+    """
     words = text.split()
     if not words:
         return prefix.rstrip()
@@ -123,7 +140,14 @@ def wrap_text(text: str, width: int = 80, prefix: str = "") -> str:
 
 
 def sanitize_ascii(text: str) -> str:
-    """Replaces Unicode quotes, dashes, and symbols with basic ASCII."""
+    """Replaces Unicode quotes, dashes, and symbols with basic ASCII.
+
+    Args:
+        text: Text string potentially containing non-basic ASCII characters.
+
+    Returns:
+        Sanitized string containing only basic ASCII replacements.
+    """
     replacements = {
         "\u2013": "-",
         "\u2014": "--",
@@ -144,7 +168,11 @@ def sanitize_ascii(text: str) -> str:
 
 
 def format_markdown(file_path: Path) -> None:
-    """Formats a markdown file using prettier and markdownlint if available."""
+    """Formats a markdown file using prettier and markdownlint if available.
+
+    Args:
+        file_path: Target Markdown file path to format in place.
+    """
     prettier_bin = shutil.which("prettier")
     npx_bin = shutil.which("npx")
     if prettier_bin:
@@ -191,7 +219,14 @@ def format_markdown(file_path: Path) -> None:
 
 
 def collect_skills(repo_root: Path) -> list[dict[str, Any]]:
-    """Discovers all skills with SKILL.md in immediate subdirectories."""
+    """Discovers all skills with SKILL.md in immediate subdirectories.
+
+    Args:
+        repo_root: Path to repository root directory.
+
+    Returns:
+        List of dictionaries containing parsed skill metadata and component flags.
+    """
     skills = []
     for item in sorted(repo_root.iterdir()):
         if not item.is_dir() or item.name.startswith((".", "_")):
@@ -263,7 +298,14 @@ def collect_skills(repo_root: Path) -> list[dict[str, Any]]:
 
 
 def generate_table(skills: Sequence[Mapping[str, Any]]) -> str:
-    """Generates an aligned, pretty-printed Markdown catalog table."""
+    """Generates an aligned, pretty-printed Markdown catalog table.
+
+    Args:
+        skills: Sequence of skill mapping dictionaries.
+
+    Returns:
+        Aligned Markdown table string.
+    """
     headers = ["Skill", "Summary", "Components"]
     rows = []
     for s in skills:
@@ -296,7 +338,14 @@ def generate_table(skills: Sequence[Mapping[str, Any]]) -> str:
 
 
 def generate_details(skills: Sequence[Mapping[str, Any]]) -> str:
-    """Generates the detailed breakdown sections for each skill."""
+    """Generates the detailed breakdown sections for each skill.
+
+    Args:
+        skills: Sequence of skill mapping dictionaries.
+
+    Returns:
+        Markdown string containing individual skill breakdown sections.
+    """
     sections = []
     for s in skills:
         lines = []
@@ -341,61 +390,70 @@ def generate_details(skills: Sequence[Mapping[str, Any]]) -> str:
 
 
 def get_default_template() -> str:
-    """Fallback template if .meta/README.template.md does not exist."""
-    return """# Agent Skills
+    """Provides fallback template if custom template does not exist.
 
-A standardized suite of cross-platform skills for AI coding agents, fully
-compatible with both **Google Antigravity** and **Anthropic Claude Code**.
+    Returns:
+        Canonical Markdown template string with replacement comment placeholders.
+    """
+    return textwrap.dedent("""\
+        # Agent Skills
 
----
+        A standardized suite of cross-platform skills for AI coding agents, fully
+        compatible with both **Google Antigravity** and **Anthropic Claude Code**.
 
-## Catalog (<!-- SKILLS_COUNT --> Skills)
+        ---
 
-<!-- SKILLS_TABLE -->
+        ## Catalog (<!-- SKILLS_COUNT --> Skills)
 
----
+        <!-- SKILLS_TABLE -->
 
-## Skill Breakdown
+        ---
 
-<!-- SKILLS_DETAILS -->
+        ## Skill Breakdown
 
----
+        <!-- SKILLS_DETAILS -->
 
-## Architectural Principles
+        ---
 
-Every skill in this repository follows the strict architectural guidelines
-codified in [`authoring-skills`](authoring-skills/SKILL.md) and
-[`writing-markdown`](writing-markdown/SKILL.md):
+        ## Architectural Principles
 
-- **Cross-Platform Compatibility**: Fully functional in both Google
-  Antigravity (`agy`) and Anthropic Claude Code (`claude`).
-- **Primary Dispatcher Pattern**: Top-level `SKILL.md` is lean (<100 lines) and
-  acts as a dispatcher to focused guides in `references/`.
-- **Automated Evaluations**: Every skill contains benchmark scenarios defined
-  in `evals/evals.json` run via deterministic test harnesses.
-- **Strict Formatting**: 80-character maximum line length (`MD013`), blank line
-  fencing (`MD031`, `MD032`), and basic ASCII hygiene.
+        Every skill in this repository follows the strict architectural guidelines
+        codified in [`authoring-skills`](authoring-skills/SKILL.md) and
+        [`writing-markdown`](writing-markdown/SKILL.md):
 
----
+        - **Cross-Platform Compatibility**: Fully functional in both Google
+          Antigravity (`agy`) and Anthropic Claude Code (`claude`).
+        - **Primary Dispatcher Pattern**: Top-level `SKILL.md` is lean (<100 lines) and
+          acts as a dispatcher to focused guides in `references/`.
+        - **Automated Evaluations**: Every skill contains benchmark scenarios defined
+          in `evals/evals.json` run via deterministic test harnesses.
+        - **Strict Formatting**: 80-character maximum line length (`MD013`), blank line
+          fencing (`MD031`, `MD032`), and basic ASCII hygiene.
 
-## Updating This Catalog
+        ---
 
-To regenerate `README.md` after adding, updating, or removing skills:
+        ## Updating This Catalog
 
-```bash
-python3 .github/scripts/generate_readme.py
-```
+        To regenerate `README.md` after adding, updating, or removing skills:
 
-To verify whether `README.md` is in sync (useful in CI or pre-commit hooks):
+        ```bash
+        python3 .github/scripts/generate_readme.py
+        ```
 
-```bash
-python3 .github/scripts/generate_readme.py --check
-```
-"""
+        To verify whether `README.md` is in sync (useful in CI or pre-commit hooks):
+
+        ```bash
+        python3 .github/scripts/generate_readme.py --check
+        ```
+    """)
 
 
-def main() -> None:
-    """CLI entry point for README.md catalog generator."""
+def main(argv: Sequence[str] | None = None) -> None:
+    """CLI entry point for README.md catalog generator.
+
+    Args:
+        argv: Optional command-line argument sequence; defaults to sys.argv[1:].
+    """
     parser = argparse.ArgumentParser(
         description="Generate README.md catalog from skill frontmatter."
     )
@@ -432,7 +490,7 @@ def main() -> None:
         action="store_true",
         help="Skip auto-formatting with prettier and markdownlint.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     repo_root = args.repo_root.resolve()
     output_path = (args.output or (repo_root / "README.md")).resolve()

@@ -124,9 +124,7 @@ from my_tool import process_data, run_cli
      third-party clients, always specify `instance=True` and `spec_set=True`:
 
      ```python
-     mock_client = mock.create_autospec(
-         ApiClient, instance=True, spec_set=True
-     )
+     mock_client = mock.create_autospec(ApiClient, instance=True, spec_set=True)
      ```
 
      This strictly prevents tests from passing if code attempts to access
@@ -141,6 +139,7 @@ from my_tool import process_data, run_cli
      def setUp(self):
          self.temp_dir = tempfile.TemporaryDirectory()
          self.sandbox = Path(self.temp_dir.name)
+
 
      def tearDown(self):
          self.temp_dir.cleanup()
