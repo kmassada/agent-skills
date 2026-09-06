@@ -1,0 +1,49 @@
+---
+name: my-action-skill
+description: >-
+    Performs clear and specific domain operations. Use when the user asks to
+    perform task X, inspect service Y, or handle workflow Z. Don't use for
+    unrelated general programming tasks.
+metadata:
+    version: "0.1.0"
+---
+
+# My Action Skill
+
+Provide a concise overview of what this skill enables the agent to do.
+
+---
+
+## Core Instructions
+
+### 1. Pre-Flight Verification
+* Verify required prerequisites before executing state-changing commands.
+
+### 2. Execution Workflow
+1. Step 1: Perform the preparation action.
+2. Step 2: Execute the primary operation.
+3. Step 3: Inspect output and verify success before proceeding.
+
+---
+
+## Key Operations Cheat Sheet
+
+| Operation | User Intent | Command Pattern | Key Notes |
+| :--- | :--- | :--- | :--- |
+| **Primary Action** | "Run primary task" | `command --flag <target>` | Requires target identifier |
+| **Silent Inspection** | "Check status of target" | `inspect --silent <target>` | Avoids stealing user focus |
+
+---
+
+## Anti-Patterns & Correct Usage
+
+| Anti-Pattern | What Went Wrong | Correct Pattern |
+| :--- | :--- | :--- |
+| **Direct Execution** | Executed in local subshell instead of target. | Dispatch command explicitly to target environment. |
+| **Missing Verification** | Assumed success without checking output. | Verify return code or parse status output. |
+
+---
+
+## Reference Guides
+
+* See [references/DETAILS.md](./references/DETAILS.md) for deep configuration specs.

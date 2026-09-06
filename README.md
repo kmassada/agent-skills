@@ -5,16 +5,33 @@ compatible with both **Google Antigravity** and **Anthropic Claude Code**.
 
 ---
 
-## Catalog (2 Skills)
+## Catalog (3 Skills)
 
 | Skill                                           | Summary                                                                                                                                                                                                                                                  | Components                       |
 | :---------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------- |
+| [`authoring-skills`](authoring-skills/SKILL.md) | Guides the creation, structuring, formatting, evaluating, and auditing of agent skills.                                                                                                                                                                  | `references`, `evals`, `scripts` |
 | [`writing-markdown`](writing-markdown/SKILL.md) | Guides writing and formatting clean, lint-compliant Markdown documents.                                                                                                                                                                                  | `references`, `evals`, `scripts` |
 | [`writing-python`](writing-python/SKILL.md)     | Enforces modern, idiomatic Python standards, static typing with collections.abc and Pylance/Pyright, open-source readability via Ruff and PEP 8, deterministic execution with uv and PEP 723, companion test discipline, and pre-commit test automation. | `references`, `evals`, `scripts` |
 
 ---
 
 ## Skill Breakdown
+
+### [`authoring-skills`](authoring-skills/SKILL.md)
+
+> Guides the creation, structuring, formatting, evaluating, and auditing of
+> agent skills. Use when authoring new skills, editing SKILL.md files, designing
+> eval suites, or reviewing skills for anti-patterns. Don't use for generic
+> application programming or non-agent repository workflows.
+
+- **Directory**: [`authoring-skills/`](authoring-skills/)
+- **Evaluations**: [`evals.json`](authoring-skills/evals/evals.json)
+- **References**:
+  - [`ANTI_PATTERNS.md`](authoring-skills/references/ANTI_PATTERNS.md)
+  - [`DESIGN_PRINCIPLES.md`](authoring-skills/references/DESIGN_PRINCIPLES.md)
+  - [`EVAL_SCHEMAS.md`](authoring-skills/references/EVAL_SCHEMAS.md)
+  - [`FORMAT.md`](authoring-skills/references/FORMAT.md)
+- **Scripts**: [`audit_skill.py`](authoring-skills/scripts/audit_skill.py)
 
 ### [`writing-markdown`](writing-markdown/SKILL.md)
 

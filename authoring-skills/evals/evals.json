@@ -1,0 +1,87 @@
+{
+  "skill_name": "authoring-skills",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Create a new skill named inspecting-logs for extracting and analyzing containerized service logs without disturbing running applications.",
+      "expected_output": "Creates inspecting-logs with gerund naming, folded scalar description containing positive and negative triggers, lean dispatcher SKILL.md, and reference guide.",
+      "files": [],
+      "expectations": [
+        "Skill directory or file uses gerund naming form 'inspecting-logs'",
+        "Frontmatter description uses folded scalar block (>-)",
+        "Description contains positive trigger phrase like 'Use when' and negative guardrail like 'Don't use for'",
+        "SKILL.md acts as a dispatcher referencing dedicated sub-guides in references/",
+        "Does not include redundant **Name:** or **Description:** bold markers in markdown body"
+      ],
+      "expected_command_patterns": [],
+      "forbidden_command_patterns": []
+    },
+    {
+      "id": 2,
+      "prompt": "Review this draft skill for anti-patterns: it directs the agent to select tmux panes to view output, executes database commands directly in the agent subshell, and lacks negative triggers.",
+      "expected_output": "Identifies context confusion, focus hijacking, and overtriggering risks, proposing non-invasive capture and explicit environment targeting.",
+      "files": [],
+      "expectations": [
+        "Identifies focus hijacking from selecting tmux panes and recommends silent capture (tmux capture-pane)",
+        "Identifies context confusion from executing in local subshell instead of target environment",
+        "Recommends adding negative guardrails to the frontmatter description to prevent overtriggering"
+      ],
+      "expected_command_patterns": [],
+      "forbidden_command_patterns": []
+    },
+    {
+      "id": 3,
+      "prompt": "A skill's SKILL.md has grown to 850 lines containing full API schemas, step-by-step tutorials, and command reference tables. How should this be refactored to optimize context budget?",
+      "expected_output": "Applies progressive disclosure by paring SKILL.md to under 100-500 lines and offloading deep references to references/ subdirectories.",
+      "files": [],
+      "expectations": [
+        "Recommends keeping SKILL.md under the 500-line context budget",
+        "Restructures SKILL.md as a primary dispatcher linking to dedicated reference files in references/",
+        "Preserves relative link integrity when moving content into references/"
+      ],
+      "expected_command_patterns": [],
+      "forbidden_command_patterns": []
+    },
+    {
+      "id": 4,
+      "prompt": "Author an evaluation suite in evals/evals.json for a Kubernetes cluster inspection skill. Ensure the test cases adhere to high-signal eval authoring principles.",
+      "expected_output": "Generates valid evals.json with task-oriented prompts, avoiding tool names in prompts, and asserting verifiable outcomes.",
+      "files": [],
+      "expectations": [
+        "Test cases frame authentic tasks rather than knowledge quiz questions",
+        "Prompts do not mention specific tool names or CLI flags",
+        "Expectations assert outcome states rather than specific implementation steps",
+        "Follows the canonical evals.json schema with id, prompt, expected_output, and expectations"
+      ],
+      "expected_command_patterns": [],
+      "forbidden_command_patterns": []
+    },
+    {
+      "id": 5,
+      "prompt": "Run an audit on a skill directory and explain what checks are performed to ensure cross-platform compliance across Google Antigravity and Claude Code.",
+      "expected_output": "Explains frontmatter syntax, name conventions, line limits, relative link integrity, broken code block detection, and script shebang verification.",
+      "files": [],
+      "expectations": [
+        "Covers YAML frontmatter validation (name regex, description length, folded scalar, triggers)",
+        "Covers markdown layout and relative link integrity verification",
+        "Covers script execution standards including executable shebang"
+      ],
+      "expected_command_patterns": [],
+      "forbidden_command_patterns": []
+    },
+    {
+      "id": 6,
+      "prompt": "Tune this skill description that is failing to trigger when users request cluster debugging: 'A general utility for nodes and pods.'",
+      "expected_output": "Expands the description into a third-person capability statement with explicit operational triggers and negative boundaries under 1024 characters.",
+      "files": [],
+      "expectations": [
+        "Rewrites description in third person starting with an active verb phrase",
+        "Includes explicit 'Use when' triggers for cluster, node, and pod debugging",
+        "Includes explicit 'Don't use for' negative boundaries",
+        "Stays within the 1024 character and 80 column line limits"
+      ],
+      "expected_command_patterns": [],
+      "forbidden_command_patterns": []
+    }
+  ]
+}

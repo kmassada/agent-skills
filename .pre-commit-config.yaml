@@ -67,6 +67,15 @@ repos:
         files: ^writing-python/
         pass_filenames: false
 
+      - id: authoring-skills-tests
+        name: Run authoring-skills companion tests
+        entry:
+          sh -c 'python3 authoring-skills/scripts/audit_skill_test.py && python3
+          authoring-skills/evals/run_eval_test.py'
+        language: system
+        files: ^authoring-skills/
+        pass_filenames: false
+
       - id: catalog-script-tests
         name: Run catalog generator companion tests
         entry: python3 .github/scripts/generate_readme_test.py

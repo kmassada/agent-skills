@@ -1,0 +1,35 @@
+{
+  "skill_name": "my-action-skill",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Run primary task against target %1",
+      "expected_output": "The operation completes against target %1 without unintended side effects.",
+      "files": [],
+      "expectations": [
+        "The command is dispatched to target %1 with required flags",
+        "The operation does not execute in the local subshell",
+        "The agent verifies output status after completion"
+      ],
+      "expected_command_patterns": [
+        "command --flag %1"
+      ],
+      "forbidden_command_patterns": [
+        "^command --flag"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "How do I perform an unrelated general programming task?",
+      "expected_output": "The agent answers the general question without triggering skill-specific commands.",
+      "files": [],
+      "expectations": [
+        "The agent does not invoke domain-specific commands for general queries"
+      ],
+      "expected_command_patterns": [],
+      "forbidden_command_patterns": [
+        "command --flag"
+      ]
+    }
+  ]
+}
