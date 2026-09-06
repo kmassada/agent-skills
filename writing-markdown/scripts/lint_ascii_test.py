@@ -29,7 +29,9 @@ class LintAsciiTest(unittest.TestCase):
     def test_clean_file_passes(self):
         """Pure basic ASCII markdown file should produce zero issues."""
         test_file = self.dir_path / "clean.md"
-        test_file.write_text("# Title\n\nThis is clean ASCII text.\n", encoding="utf-8")
+        test_file.write_text(
+            "# Title\n\nThis is clean ASCII text.\n", encoding="utf-8"
+        )
 
         count, issues = process_file(test_file, fix=False)
         self.assertEqual(count, 0)
@@ -38,7 +40,9 @@ class LintAsciiTest(unittest.TestCase):
     def test_detects_en_dash_and_em_dash(self):
         """Should detect en-dash and em-dash characters."""
         test_file = self.dir_path / "dashes.md"
-        test_file.write_text("Wait 1–2s. Word—another word.\n", encoding="utf-8")
+        test_file.write_text(
+            "Wait 1–2s. Word—another word.\n", encoding="utf-8"
+        )
 
         count, issues = process_file(test_file, fix=False)
         self.assertEqual(count, 2)
@@ -48,7 +52,9 @@ class LintAsciiTest(unittest.TestCase):
     def test_detects_smart_quotes(self):
         """Should detect smart quotes (single and double)."""
         test_file = self.dir_path / "quotes.md"
-        test_file.write_text("“Double quotes” and ‘single quotes’.\n", encoding="utf-8")
+        test_file.write_text(
+            "“Double quotes” and ‘single quotes’.\n", encoding="utf-8"
+        )
 
         count, _ = process_file(test_file, fix=False)
         self.assertEqual(count, 4)

@@ -47,7 +47,9 @@ def parse_frontmatter(content: str) -> dict[str, Any]:
         elif block_mode == "literal":
             data[current_key] = "\n".join(current_val_lines).strip()
         else:
-            val_str = " ".join(line.strip() for line in current_val_lines).strip()
+            val_str = " ".join(
+                line.strip() for line in current_val_lines
+            ).strip()
             if (val_str.startswith('"') and val_str.endswith('"')) or (
                 val_str.startswith("'") and val_str.endswith("'")
             ):
@@ -207,7 +209,9 @@ def collect_skills(repo_root: Path) -> list[dict[str, Any]]:
         description = meta.get("description", "").strip()
 
         has_evals = (item / "evals" / "evals.json").is_file()
-        has_scripts = (item / "scripts").is_dir() and any((item / "scripts").iterdir())
+        has_scripts = (item / "scripts").is_dir() and any(
+            (item / "scripts").iterdir()
+        )
         has_refs = (item / "references").is_dir() and any(
             (item / "references").iterdir()
         )
@@ -278,16 +282,22 @@ def generate_table(skills: list[dict[str, Any]]) -> str:
             col_widths[i] = max(col_widths[i], len(cell))
 
     header_line = (
-        "| " + " | ".join(h.ljust(col_widths[i]) for i, h in enumerate(headers)) + " |"
+        "| "
+        + " | ".join(h.ljust(col_widths[i]) for i, h in enumerate(headers))
+        + " |"
     )
-    sep_parts = [":" + "-" * max(3, col_widths[i] - 1) for i in range(len(headers))]
+    sep_parts = [
+        ":" + "-" * max(3, col_widths[i] - 1) for i in range(len(headers))
+    ]
     sep_line = "| " + " | ".join(sep_parts) + " |"
 
     lines = [header_line, sep_line]
     for row in rows:
         row_line = (
             "| "
-            + " | ".join(row[i].ljust(col_widths[i]) for i in range(len(headers)))
+            + " | ".join(
+                row[i].ljust(col_widths[i]) for i in range(len(headers))
+            )
             + " |"
         )
         lines.append(row_line)
@@ -324,12 +334,16 @@ def generate_details(skills: list[dict[str, Any]]) -> str:
             else:
                 lines.append("- **References**:")
                 for ref in s["ref_files"]:
-                    lines.append(f"  - [`{ref}`]({s['dir_name']}/references/{ref})")
+                    lines.append(
+                        f"  - [`{ref}`]({s['dir_name']}/references/{ref})"
+                    )
 
         if s["script_files"]:
             if len(s["script_files"]) == 1:
                 sc = s["script_files"][0]
-                lines.append(f"- **Scripts**: [`{sc}`]({s['dir_name']}/scripts/{sc})")
+                lines.append(
+                    f"- **Scripts**: [`{sc}`]({s['dir_name']}/scripts/{sc})"
+                )
             else:
                 lines.append("- **Scripts**:")
                 for sc in s["script_files"]:
@@ -437,7 +451,9 @@ def main() -> None:
     repo_root = args.repo_root.resolve()
     output_path = (args.output or (repo_root / "README.md")).resolve()
 
-    template_path = args.template or (repo_root / ".github" / "README.template.md")
+    template_path = args.template or (
+        repo_root / ".github" / "README.template.md"
+    )
     if template_path.is_file():
         template_content = template_path.read_text(encoding="utf-8")
     else:
@@ -448,9 +464,13 @@ def main() -> None:
     details_md = generate_details(skills)
 
     readme_content = template_content
-    readme_content = readme_content.replace("<!-- SKILLS_COUNT -->", str(len(skills)))
+    readme_content = readme_content.replace(
+        "<!-- SKILLS_COUNT -->", str(len(skills))
+    )
     readme_content = readme_content.replace("<!-- SKILLS_TABLE -->", table_md)
-    readme_content = readme_content.replace("<!-- SKILLS_DETAILS -->", details_md)
+    readme_content = readme_content.replace(
+        "<!-- SKILLS_DETAILS -->", details_md
+    )
 
     readme_content = sanitize_ascii(readme_content)
 
@@ -468,7 +488,9 @@ def main() -> None:
 
         expected_content = readme_content
         if not args.no_format:
-            with tempfile.NamedTemporaryFile("w+", suffix=".md", delete=False) as tf:
+            with tempfile.NamedTemporaryFile(
+                "w+", suffix=".md", delete=False
+            ) as tf:
                 tf.write(readme_content)
                 tf_path = Path(tf.name)
             try:
@@ -492,7 +514,9 @@ def main() -> None:
         format_markdown(output_path)
         print(f"Auto-formatted {output_path} with prettier & markdownlint.")
 
-    print(f"Successfully generated catalog for {len(skills)} skills at {output_path}")
+    print(
+        f"Successfully generated catalog for {len(skills)} skills at {output_path}"
+    )
 
     if args.lint:
         mdlint_args = ["markdownlint"]

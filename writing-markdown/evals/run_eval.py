@@ -80,10 +80,17 @@ def check_markdown_expectation(text: str, expectation: str) -> tuple[bool, str]:
     # Unicode / ASCII hygiene checks
     if "unicodehighlight" in exp_lower or "basic ascii" in exp_lower:
         is_pure_ascii = all(ord(c) < 128 for c in text)
-        return is_pure_ascii, "Text contains only basic ASCII without homoglyphs"
+        return (
+            is_pure_ascii,
+            "Text contains only basic ASCII without homoglyphs",
+        )
 
     # GFM Callouts
-    if "alert" in exp_lower or "callout" in exp_lower or "[!warning]" in exp_lower:
+    if (
+        "alert" in exp_lower
+        or "callout" in exp_lower
+        or "[!warning]" in exp_lower
+    ):
         has_callout = bool(
             re.search(
                 r"^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]",
@@ -135,7 +142,9 @@ def evaluate_static_benchmark(
         10: "```python\ndef hello() -> None:\n    print('hello')\n```\n",
     }
 
-    solution = sample_solutions.get(test_id) or test_case.get("expected_output") or ""
+    solution = (
+        sample_solutions.get(test_id) or test_case.get("expected_output") or ""
+    )
     failures: list[str] = []
 
     for exp in expectations:
@@ -256,7 +265,9 @@ def main() -> None:
         )
 
         if args.backend in ("static", "dry-run"):
-            passed, failures = evaluate_static_benchmark(case, verbose=args.verbose)
+            passed, failures = evaluate_static_benchmark(
+                case, verbose=args.verbose
+            )
         else:
             passed, failures = run_agent_eval(
                 case, backend=args.backend, verbose=args.verbose
