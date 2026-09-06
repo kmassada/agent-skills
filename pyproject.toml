@@ -1,7 +1,7 @@
 [project]
-name = "writing-markdown"
+name = "agent-skills"
 version = "0.1.0"
-description = "Markdownlint and ASCII hygiene guides and auto-fixers."
+description = "Repository of reusable AI coding agent skills across Google Antigravity and Anthropic Claude Code."
 requires-python = ">=3.11"
 dependencies = []
 

@@ -394,7 +394,8 @@ python3 .github/scripts/generate_readme.py --check
 """
 
 
-def main():
+def main() -> None:
+    """CLI entry point for README.md catalog generator."""
     parser = argparse.ArgumentParser(
         description="Generate README.md catalog from skill frontmatter."
     )

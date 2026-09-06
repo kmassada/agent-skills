@@ -81,6 +81,7 @@ def process_file(
 
 
 def main() -> None:
+    """CLI entry point for ASCII linting and fixing utility."""
     parser = argparse.ArgumentParser(
         description="Lint and fix non-basic ASCII characters in Markdown"
     )

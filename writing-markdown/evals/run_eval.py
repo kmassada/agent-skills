@@ -25,6 +25,8 @@ SKILL_ROOT = SCRIPT_DIR.parent
 
 
 class TermColor:
+    """Terminal ANSI escape sequences for colorized output."""
+
     GREEN = "\033[92m"
     RED = "\033[91m"
     YELLOW = "\033[93m"
@@ -193,6 +195,7 @@ def run_agent_eval(
 
 
 def main() -> None:
+    """CLI entry point for running writing-markdown evaluation benchmarks."""
     parser = argparse.ArgumentParser(
         description="Run evaluation benchmarks for writing-markdown skill"
     )
