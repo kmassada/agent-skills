@@ -5,49 +5,15 @@ compatible with both **Google Antigravity** and **Anthropic Claude Code**.
 
 ---
 
-## Catalog (3 Skills)
+## Catalog (1 Skills)
 
-| Skill                                           | Summary                                                                                 | Components                       |
-| :---------------------------------------------- | :-------------------------------------------------------------------------------------- | :------------------------------- |
-| [`authoring-skills`](authoring-skills/SKILL.md) | Guides the creation, structuring, formatting, evaluating, and auditing of agent skills. | `references`                     |
-| [`tmux-control`](tmux-control/SKILL.md)         | Manages tmux terminal sessions, windows, and panes.                                     | `references`, `evals`, `scripts` |
-| [`writing-markdown`](writing-markdown/SKILL.md) | Guides writing and formatting clean, lint-compliant Markdown documents.                 | `references`, `evals`, `scripts` |
+| Skill                                           | Summary                                                                 | Components                       |
+| :---------------------------------------------- | :---------------------------------------------------------------------- | :------------------------------- |
+| [`writing-markdown`](writing-markdown/SKILL.md) | Guides writing and formatting clean, lint-compliant Markdown documents. | `references`, `evals`, `scripts` |
 
 ---
 
 ## Skill Breakdown
-
-### [`authoring-skills`](authoring-skills/SKILL.md)
-
-> Guides the creation, structuring, formatting, evaluating, and auditing of
-> agent skills. Use when authoring new skills, editing SKILL.md files, designing
-> eval suites, or reviewing skills for anti-patterns. Don't use for generic
-> application programming or non-agent repository workflows.
-
-- **Directory**: [`authoring-skills/`](authoring-skills/)
-- **References**:
-  - [`ANTI_PATTERNS.md`](authoring-skills/references/ANTI_PATTERNS.md)
-  - [`DESIGN_PRINCIPLES.md`](authoring-skills/references/DESIGN_PRINCIPLES.md)
-  - [`EVAL_SCHEMAS.md`](authoring-skills/references/EVAL_SCHEMAS.md)
-  - [`FORMAT.md`](authoring-skills/references/FORMAT.md)
-
-### [`tmux-control`](tmux-control/SKILL.md)
-
-> Manages tmux terminal sessions, windows, and panes. Capable of creating
-> windows, splitting panes (horizontal/vertical/full-width), sending commands to
-> specific panes, quietly capturing pane outputs without stealing user focus,
-> navigating adjacent panes directionally (left/right/above/under), and handling
-> long-running background tasks. Triggers on phrases like 'run this in tmux',
-> 'split pane on the right', 'create window', 'what is in pane %2', 'focus pane
-> below', or 'send command to pane'.
-
-- **Directory**: [`tmux-control/`](tmux-control/)
-- **Evaluations**: [`evals.json`](tmux-control/evals/evals.json)
-- **References**:
-  [`GEOMETRIC_NAVIGATION.md`](tmux-control/references/GEOMETRIC_NAVIGATION.md)
-- **Scripts**:
-  - [`relative_pane.py`](tmux-control/scripts/relative_pane.py)
-  - [`relative_pane_test.py`](tmux-control/scripts/relative_pane_test.py)
 
 ### [`writing-markdown`](writing-markdown/SKILL.md)
 

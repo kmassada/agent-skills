@@ -1,0 +1,49 @@
+{
+  "skill_name": "writing-markdown",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Fix this markdown snippet where a list follows a colon: 'Prerequisites:\n* Docker\n* Git'",
+      "expected_output": "The list is separated from the preceding colon line by an empty blank line to satisfy MD032.",
+      "files": [],
+      "expectations": [
+        "A blank line is inserted between the colon line and the first list item",
+        "The list items use standard bullet markers",
+        "The snippet satisfies markdownlint rule MD032 (blanks-around-lists)"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Show how to embed a bash code block inside a numbered list item for step 2 without breaking list numbering",
+      "expected_output": "The code block is nested with 4-space indentation and separated with blank lines.",
+      "files": [],
+      "expectations": [
+        "The code block is preceded by a blank line",
+        "The triple backticks and code contents are indented by 4 spaces",
+        "A syntax language identifier (bash) is declared on the code block (MD040)",
+        "Step 3 continues sequentially after the code block"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Write a long docker command with multiple flags formatted cleanly for markdown",
+      "expected_output": "The command uses line continuation backslashes before flags with 2-space indentation.",
+      "files": [],
+      "expectations": [
+        "Long command lines are split using trailing backslashes",
+        "Flags are placed on their own continuation lines with 2-space indentation",
+        "The command is enclosed in a fenced code block with a language tag"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Create an informational callout warning the user about API rate limits",
+      "expected_output": "Uses GitHub-flavored markdown alert syntax with blank lines surrounding it.",
+      "files": [],
+      "expectations": [
+        "Uses > [!WARNING] or > [!NOTE] syntax",
+        "The callout block is surrounded by blank lines"
+      ]
+    }
+  ]
+}
