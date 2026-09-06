@@ -1,0 +1,44 @@
+{
+  "skill_name": "managing-credentials",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I want to set up Doppler for my AI agent workspace to store Slack credentials locally without any cloud sync. How do I initialize the project and set my tokens?",
+      "expected_output": "Provides commands to create a local Doppler project, bind the local directory using doppler setup, and set secrets with doppler secrets set without configuring cloud sync.",
+      "files": [],
+      "expectations": [
+        "Instructs creating a project using doppler projects create",
+        "Binds local directory to dev environment using doppler setup",
+        "Sets secret tokens using doppler secrets set",
+        "Warns against setting up cloud sync or exporting plaintext tokens to disk"
+      ],
+      "expected_command_patterns": [
+        "doppler\\s+projects\\s+create",
+        "doppler\\s+setup",
+        "doppler\\s+secrets\\s+set"
+      ],
+      "forbidden_command_patterns": [
+        "doppler\\s+integrations",
+        "echo.*>\\s*\\.env"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "How do I run my Python agent script and configure an MCP server so they receive my Doppler credentials without writing a .env file to disk?",
+      "expected_output": "Explains using doppler run -- to inject environment variables into memory at runtime and shows configuring MCP server commands with doppler run.",
+      "files": [],
+      "expectations": [
+        "Demonstrates runtime injection using doppler run -- <command>",
+        "Shows wrapping MCP server commands with doppler run",
+        "Emphasizes zero disk exposure and preventing plaintext tokens in git"
+      ],
+      "expected_command_patterns": [
+        "doppler\\s+run\\s+--"
+      ],
+      "forbidden_command_patterns": [
+        "cat.*\\.env",
+        "export\\s+SLACK_BOT_TOKEN="
+      ]
+    }
+  ]
+}

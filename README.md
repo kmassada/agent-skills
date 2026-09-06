@@ -5,15 +5,16 @@ compatible with both **Google Antigravity** and **Anthropic Claude Code**.
 
 ---
 
-## Catalog (5 Skills)
+## Catalog (6 Skills)
 
-| Skill                                           | Summary                                                                                                                                                                                                                                                  | Components                       |
-| :---------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------- |
-| [`authoring-skills`](authoring-skills/SKILL.md) | Guides the creation, structuring, formatting, evaluating, and auditing of agent skills.                                                                                                                                                                  | `references`, `evals`, `scripts` |
-| [`controlling-tmux`](controlling-tmux/SKILL.md) | Manages tmux terminal sessions, windows, and panes.                                                                                                                                                                                                      | `references`, `evals`, `scripts` |
-| [`sharing-snips`](sharing-snips/SKILL.md)       | Provides a workflow and script to capture screenshots, automatically upload them to a Google Cloud Storage bucket using the Python client library, and copy the public URL to the macOS clipboard.                                                       | `evals`, `scripts`               |
-| [`writing-markdown`](writing-markdown/SKILL.md) | Guides writing and formatting clean, lint-compliant Markdown documents.                                                                                                                                                                                  | `references`, `evals`, `scripts` |
-| [`writing-python`](writing-python/SKILL.md)     | Enforces modern, idiomatic Python standards, static typing with collections.abc and Pylance/Pyright, open-source readability via Ruff and PEP 8, deterministic execution with uv and PEP 723, companion test discipline, and pre-commit test automation. | `references`, `evals`, `scripts` |
+| Skill                                                   | Summary                                                                                                                                                                                                                                                  | Components                       |
+| :------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------- |
+| [`authoring-skills`](authoring-skills/SKILL.md)         | Guides the creation, structuring, formatting, evaluating, and auditing of agent skills.                                                                                                                                                                  | `references`, `evals`, `scripts` |
+| [`controlling-tmux`](controlling-tmux/SKILL.md)         | Manages tmux terminal sessions, windows, and panes.                                                                                                                                                                                                      | `references`, `evals`, `scripts` |
+| [`managing-credentials`](managing-credentials/SKILL.md) | Configures and manages credentials locally using Doppler without external cloud sync.                                                                                                                                                                    | `evals`, `scripts`               |
+| [`sharing-snips`](sharing-snips/SKILL.md)               | Provides a workflow and script to capture screenshots, automatically upload them to a Google Cloud Storage bucket using the Python client library, and copy the public URL to the macOS clipboard.                                                       | `evals`, `scripts`               |
+| [`writing-markdown`](writing-markdown/SKILL.md)         | Guides writing and formatting clean, lint-compliant Markdown documents.                                                                                                                                                                                  | `references`, `evals`, `scripts` |
+| [`writing-python`](writing-python/SKILL.md)             | Enforces modern, idiomatic Python standards, static typing with collections.abc and Pylance/Pyright, open-source readability via Ruff and PEP 8, deterministic execution with uv and PEP 723, companion test discipline, and pre-commit test automation. | `references`, `evals`, `scripts` |
 
 ---
 
@@ -54,6 +55,19 @@ compatible with both **Google Antigravity** and **Anthropic Claude Code**.
 - **Scripts**:
   - [`dispatch_agent.py`](controlling-tmux/scripts/dispatch_agent.py)
   - [`relative_pane.py`](controlling-tmux/scripts/relative_pane.py)
+
+### [`managing-credentials`](managing-credentials/SKILL.md)
+
+> Configures and manages credentials locally using Doppler without external
+> cloud sync. Use when installing Doppler, authenticating locally, setting
+> secrets, or injecting environment variables into local scripts, agents, and
+> MCP servers. Don't use for configuring cloud sync integrations, CI/CD
+> deployments, Kubernetes operators, or unencrypted local dot-env files.
+
+- **Directory**: [`managing-credentials/`](managing-credentials/)
+- **Evaluations**: [`evals.json`](managing-credentials/evals/evals.json)
+- **Scripts**:
+  [`check_doppler.py`](managing-credentials/scripts/check_doppler.py)
 
 ### [`sharing-snips`](sharing-snips/SKILL.md)
 
