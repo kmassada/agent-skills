@@ -16,25 +16,22 @@ standardized structure:
 
 ```text
 agent-skills/
-├── .github/scripts/           # Automated catalog generator & CI tooling
+├── .github/scripts/           # Automated catalog generator & CI test runner
 ├── rules/                     # Repository-level agent behavioral rules
-├── authoring-skills/          # Skill creation & auditing standards
-├── controlling-tmux/          # Terminal multiplexer control & agent dispatch
-├── sharing-snips/             # Screenshot capture & cloud sharing
-├── writing-markdown/          # Markdown linting & formatting standards
-├── writing-python/            # Python typing, Ruff, & testing discipline
-├── .pre-commit-config.yaml    # 16 automated quality gates
+├── <skill-name>/              # Modular skill package (e.g. controlling-tmux)
+│   ├── SKILL.md               # Lean operational runbook
+│   ├── .pre-commit-config.yaml# Standalone skill pre-commit gate
+│   ├── scripts/               # Production utilities & companion tests
+│   ├── evals/                 # Benchmark evals & runner
+│   └── references/            # Architecture & deep references
+├── .pre-commit-config.yaml    # Monorepo composite quality gates
 ├── AGENTS.md                  # This operational playbook
 └── README.md                  # Generated catalog (DO NOT EDIT MANUALLY)
 ```
 
-Each skill directory (`<skill-name>/`) contains:
-
-* `SKILL.md`: Lean operational runbook and dispatch document.
-* `scripts/`: Production utilities with companion unit tests (`*_test.py`).
-* `evals/`: Claude-conforming `evals.json`, `run_eval.py`, and `run_eval_test.py`.
-* `references/`: In-depth guides and architectural references.
-* `pyproject.toml` / `.markdownlint.json`: Isolated tool configurations.
+Each skill directory (`<skill-name>/`) is an autonomous, self-contained unit
+capable of functioning either within this monorepo or as a standalone git
+repository.
 
 ---
 
@@ -42,24 +39,21 @@ Each skill directory (`<skill-name>/`) contains:
 
 Every agent working in this monorepo must respect these non-negotiable gates:
 
-### A. Scoped Pre-Commit Test Hooks
+### A. Composite Pre-Commit Architecture
 
-In `.pre-commit-config.yaml`, companion unit tests are scoped per skill
-directory using regex path filters:
+The repository employs a composite pre-commit architecture balancing
+standalone portability with monorepo velocity:
 
-```yaml
-- id: controlling-tmux-tests
-  name: Run controlling-tmux companion tests
-  entry: sh -c 'python3 controlling-tmux/scripts/... && python3 controlling-tmux/evals/...'
-  language: system
-  files: ^controlling-tmux/
-  pass_filenames: false
-```
-
-* **Rule**: When adding or editing a skill, register or update its companion test
-  hook in `.pre-commit-config.yaml`.
-* **Reason**: Prevents running test suites for untouched skills during focused
-  feature development while still guaranteeing full repository coverage.
+* **Standalone Autonomy**: Every skill directory carries its own
+  `.pre-commit-config.yaml`. When a skill is cloned or developed as an
+  independent repository, running `uvx pre-commit run --all-files` locally
+  enforces its own linters, types, and companion tests without monorepo
+  dependencies.
+* **Monorepo Dynamic Discovery**: The root `.pre-commit-config.yaml` runs
+  `python3 .github/scripts/run_skill_tests.py`, which dynamically identifies
+  affected skill packages from staged files and executes their companion tests
+  automatically. Adding a new skill requires zero edits to the root
+  pre-commit configuration.
 
 ### B. Catalog Synchronization Invariant
 
@@ -134,9 +128,10 @@ Follow this 8-step gate whenever adding a new skill to this monorepo:
    * Implement `<skill-name>/evals/run_eval.py` supporting dry-run verification.
    * Write companion test `<skill-name>/evals/run_eval_test.py`.
 
-5. **Register Scoped Pre-Commit Hook**:
-   * Add `<skill-name>-tests` to `.pre-commit-config.yaml` with
-     `files: ^<skill-name>/`.
+5. **Standalone Pre-Commit Configuration**:
+   * Add `<skill-name>/.pre-commit-config.yaml` declaring standalone lint,
+     pyright, markdownlint, and companion test hooks so the skill can be
+     tested independently when cloned as a standalone repository.
 
 6. **Regenerate Catalog**:
    * Run `python3 .github/scripts/generate_readme.py`.
@@ -148,7 +143,7 @@ Follow this 8-step gate whenever adding a new skill to this monorepo:
 
 8. **Execute Pre-Commit Gate**:
    * Run `uvx pre-commit run --all-files`.
-   * Confirm all 15+ hooks pass green before committing.
+   * Confirm all quality hooks pass green before committing.
 
 ---
 
@@ -177,29 +172,20 @@ python3 writing-markdown/scripts/lint_ascii.py **/*.md
 ### Run Skill Companion Tests
 
 ```bash
-# Markdown tests
-python3 writing-markdown/scripts/lint_ascii_test.py
-python3 writing-markdown/evals/run_eval_test.py
-
-# Python tests
-python3 writing-python/scripts/check_python_test.py
-python3 writing-python/evals/run_eval_test.py
-
-# Authoring skills tests
-python3 authoring-skills/scripts/audit_skill_test.py
-python3 authoring-skills/evals/run_eval_test.py
-
-# Tmux control tests
+# Run companion tests for a specific skill (example: controlling-tmux)
 python3 controlling-tmux/scripts/relative_pane_test.py
 python3 controlling-tmux/scripts/dispatch_agent_test.py
 python3 controlling-tmux/evals/run_eval_test.py
 
-# Sharing snips tests
-python3 sharing-snips/scripts/test_quota_guard.py
-python3 sharing-snips/scripts/test_snip.py
+# Run companion tests dynamically across affected skills
+python3 .github/scripts/run_skill_tests.py [modified_files...]
 
-# Catalog generator tests
+# Run companion tests across all skills
+python3 .github/scripts/run_skill_tests.py --all
+
+# Run .github tooling tests
 python3 .github/scripts/generate_readme_test.py
+python3 .github/scripts/run_skill_tests_test.py
 ```
 
 ### Run Skill Audits & Catalog

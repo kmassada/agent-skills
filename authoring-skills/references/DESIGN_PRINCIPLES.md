@@ -119,7 +119,6 @@ evaluations in `evals/`, they must include automated test gates:
 - **Eval Runner & Schema Gate:** `evals/run_eval.py` must support a dry-run
   mode verifying that `evals/evals.json` syntax, expectation schemas, and regex
   patterns remain valid.
-- **Scoped Pre-Commit / Pre-Submit Hooks:** In monorepos or multi-skill
-  environments, wire each skill's companion tests into scoped hooks (e.g.
-  `files: ^<skill-name>/` in `.pre-commit-config.yaml`). Changes to the skill
-  are automatically verified on commit without running unrelated suites.
+- **Composite Pre-Commit Gates:** Bundle a `.pre-commit-config.yaml` within
+  the skill package for standalone autonomy, and ensure companion tests can be
+  dynamically discovered and verified in monorepo CI environments.

@@ -7,26 +7,18 @@ repos:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
-      - id: check-added-large-files
 
   - repo: local
     hooks:
-      - id: generate-readme
-        name: Check README.md catalog synchronization
-        entry: python3 .github/scripts/generate_readme.py --check
-        language: system
-        files: ^(.*SKILL\.md|\.github/.*|README\.md)$
-        pass_filenames: false
-
       - id: lint-ascii
         name: Check basic ASCII hygiene in Markdown
-        entry: python3 writing-markdown/scripts/lint_ascii.py
+        entry: python3 scripts/lint_ascii.py
         language: system
         types: [markdown]
 
       - id: markdownlint
         name: Lint Markdown files
-        entry: markdownlint --config writing-markdown/.markdownlint.json
+        entry: markdownlint --config .markdownlint.json
         language: system
         types: [markdown]
 
@@ -49,17 +41,10 @@ repos:
         types: [python]
         pass_filenames: false
 
-      - id: skill-companion-tests
-        name: Run companion tests for changed skills
-        entry: python3 .github/scripts/run_skill_tests.py
-        language: system
-        pass_filenames: true
-
-      - id: github-script-tests
-        name: Run .github tooling companion tests
+      - id: companion-tests
+        name: Run companion unit tests
         entry:
-          sh -c 'python3 .github/scripts/generate_readme_test.py && python3
-          .github/scripts/run_skill_tests_test.py'
+          sh -c 'python3 scripts/lint_ascii_test.py && python3
+          evals/run_eval_test.py'
         language: system
-        files: ^(\.github/|README\.md)
         pass_filenames: false

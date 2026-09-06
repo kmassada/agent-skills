@@ -1,0 +1,50 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: Lint Python with ruff check
+        entry: uvx ruff check
+        language: system
+        types: [python]
+
+      - id: ruff-format
+        name: Check Python formatting with ruff format
+        entry: uvx ruff format --check
+        language: system
+        types: [python]
+
+      - id: pyright-check
+        name: Check Python types with pyright
+        entry: uvx pyright .
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: markdownlint
+        name: Lint Markdown files
+        entry: markdownlint
+        language: system
+        types: [markdown]
+
+      - id: audit-skill
+        name: Audit skill compliance
+        entry: python3 scripts/audit_skill.py .
+        language: system
+        pass_filenames: false
+
+      - id: companion-tests
+        name: Run companion unit tests
+        entry:
+          sh -c 'python3 scripts/audit_skill_test.py && python3
+          evals/run_eval_test.py'
+        language: system
+        pass_filenames: false
