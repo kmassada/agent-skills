@@ -110,20 +110,38 @@ class LintAsciiTest(unittest.TestCase):
         self.assertIn("❯", test_file.read_text(encoding="utf-8"))
 
     def test_unreadable_or_missing_file_returns_error(self):
-        """Should handle missing or unreadable file gracefully with error issue."""
+        """Should handle missing file gracefully with error issue."""
         missing_file = self.dir_path / "non_existent_file.md"
         count, issues = process_file(missing_file, fix=False)
         self.assertEqual(count, 1)
         self.assertEqual(len(issues), 1)
         self.assertIn("Failed to read", issues[0])
 
+    def test_corrupted_encoding_returns_error(self):
+        """Should handle file with invalid UTF-8 byte sequences gracefully."""
+        bad_file = self.dir_path / "invalid_encoding.md"
+        bad_file.write_bytes(b"\xff\xfe\xfd\x80\x81")
+        count, issues = process_file(bad_file, fix=False)
+        self.assertEqual(count, 1)
+        self.assertIn("Failed to read", issues[0])
+
     @mock.patch("sys.stdout", new_callable=io.StringIO)
     def test_main_cli_clean(self, mock_stdout: io.StringIO):
-        """CLI invocation on clean files should output clean message and exit normally."""
+        """CLI invocation on clean files should exit normally."""
         test_file = self.dir_path / "clean_cli.md"
         test_file.write_text("# Clean Title\nClean markdown.\n", encoding="utf-8")
 
         main([str(test_file)])
+        self.assertIn("Clean! Checked 1 file(s)", mock_stdout.getvalue())
+
+    @mock.patch("sys.stdout", new_callable=io.StringIO)
+    def test_main_cli_directory_traversal(self, mock_stdout: io.StringIO):
+        """CLI invocation on a directory should recursively scan markdown files."""
+        sub_dir = self.dir_path / "sub"
+        sub_dir.mkdir()
+        (sub_dir / "clean_sub.md").write_text("# Sub Clean\n", encoding="utf-8")
+
+        main([str(self.dir_path)])
         self.assertIn("Clean! Checked 1 file(s)", mock_stdout.getvalue())
 
     @mock.patch("sys.stdout", new_callable=io.StringIO)

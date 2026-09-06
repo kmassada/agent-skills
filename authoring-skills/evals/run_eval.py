@@ -270,40 +270,68 @@ def evaluate_static_benchmark(
 
     sample_solutions = {
         1: (
-            "---\nname: inspecting-logs\ndescription: >-\n  Extracts and analyzes containerized"
-            " service logs without disturbing running applications. Use when debugging container"
-            " crashes or analyzing log streams. Don't use for modifying container configuration.\n---\n"
-            "# Inspecting Logs\n\nSee [details](./references/DETAILS.md) for full guide.\n"
+            "---\n"
+            "name: inspecting-logs\n"
+            "description: >-\n"
+            "  Extracts and analyzes containerized service logs without disturbing\n"
+            "  running applications. Use when debugging container crashes or "
+            "analyzing\n"
+            "  log streams. Don't use for modifying container configuration.\n"
+            "---\n"
+            "# Inspecting Logs\n\n"
+            "See [details](./references/DETAILS.md) for full guide.\n"
         ),
         2: (
             "The draft skill demonstrates two major anti-patterns:\n"
-            "1. Focus Hijacking: selecting tmux panes interrupts user workflow. Use `tmux capture-pane -p`.\n"
-            "2. Context Confusion: executing in the local subshell risks environment pollution. Target `docker exec`.\n"
-            "3. Overtriggering: add negative guardrails (e.g. 'Don't use for generic SQL').\n"
+            "1. Focus Hijacking: selecting tmux panes interrupts user workflow. "
+            "Use `tmux capture-pane -p`.\n"
+            "2. Context Confusion: executing in the local subshell risks "
+            "environment pollution. Target `docker exec`.\n"
+            "3. Overtriggering: add negative guardrails "
+            "(e.g. 'Don't use for generic SQL').\n"
         ),
         3: (
             "Refactor using progressive disclosure:\n"
-            "1. Cap SKILL.md under the 500-line budget as a lean primary dispatcher.\n"
-            "2. Offload API schemas and deep tables into references/API_REFERENCE.md.\n"
+            "1. Cap SKILL.md under the 500-line budget as a lean primary "
+            "dispatcher.\n"
+            "2. Offload API schemas and deep tables into "
+            "references/API_REFERENCE.md.\n"
             "3. Ensure all relative links maintain integrity.\n"
         ),
         4: (
-            '{\n  "skill_name": "inspecting-k8s",\n  "evals": [\n    {\n      "id": 1,\n'
+            "{\n"
+            '  "skill_name": "inspecting-k8s",\n'
+            '  "evals": [\n'
+            "    {\n"
+            '      "id": 1,\n'
             '      "prompt": "Inspect cluster nodes in namespace prod",\n'
-            '      "expected_output": "Reports healthy status for all active nodes.",\n'
-            '      "expectations": ["Frame authentic task, not knowledge quiz", "Do not mention tool names", "Assert outcomes"]\n'
-            "    }\n  ]\n}\n"
+            '      "expected_output": '
+            '"Reports healthy status for all active nodes.",\n'
+            '      "expectations": [\n'
+            '        "Frame authentic task, not knowledge quiz",\n'
+            '        "Do not mention tool names",\n'
+            '        "Assert outcomes"\n'
+            "      ]\n"
+            "    }\n"
+            "  ]\n"
+            "}\n"
         ),
         5: (
             "The skill audit tool performs comprehensive verification:\n"
-            "1. YAML frontmatter validation: regex name pattern, description under 1024 chars, folded scalar (>-), positive and negative triggers.\n"
-            "2. Markdown layout: H1 header, 500-line budget, no broken code blocks, and relative link integrity.\n"
-            "3. Script standards: verifies executable shebang (#!/usr/bin/env python3) and syntax validity.\n"
+            "1. YAML frontmatter validation: regex name pattern, description under "
+            "1024 chars, folded scalar (>-), positive and negative triggers.\n"
+            "2. Markdown layout: H1 header, 500-line budget, no broken code "
+            "blocks, and relative link integrity.\n"
+            "3. Script standards: verifies executable shebang "
+            "(#!/usr/bin/env python3) and syntax validity.\n"
         ),
         6: (
-            "description: >-\n  Inspects and debugs Kubernetes cluster health, nodes, and pods.\n"
-            "  Use when diagnosing node pressure, pod eviction, or deployment crashes.\n"
-            "  Don't use for Docker Compose or local machine system troubleshooting.\n"
+            "description: >-\n"
+            "  Inspects and debugs Kubernetes cluster health, nodes, and pods.\n"
+            "  Use when diagnosing node pressure, pod eviction, or deployment "
+            "crashes.\n"
+            "  Don't use for Docker Compose or local machine system "
+            "troubleshooting.\n"
         ),
     }
 

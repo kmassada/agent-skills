@@ -19,6 +19,7 @@ from generate_readme import (
     collect_skills,
     generate_details,
     generate_table,
+    get_default_template,
     main,
     parse_frontmatter,
     sanitize_ascii,
@@ -69,7 +70,10 @@ class GenerateReadmeTest(unittest.TestCase):
 
     def test_wrap_text(self):
         """Should wrap text at specified line width with optional prefix."""
-        text = "This is a long sentence that should be wrapped across multiple lines cleanly."
+        text = (
+            "This is a long sentence that should be wrapped across "
+            "multiple lines cleanly."
+        )
         wrapped = wrap_text(text, width=30, prefix="> ")
         lines = wrapped.splitlines()
         self.assertTrue(all(len(line) <= 30 for line in lines))
@@ -141,13 +145,11 @@ class GenerateReadmeTest(unittest.TestCase):
         table = generate_table(skills)
         lines = table.splitlines()
 
-        # Check headers and separator
         self.assertIn("| Skill", lines[0])
         self.assertIn("| Summary", lines[0])
         self.assertIn("| Components", lines[0])
         self.assertTrue(lines[1].startswith("| :"))
 
-        # Verify all lines have equal column delimiters
         pipe_counts = [line.count("|") for line in lines]
         self.assertTrue(all(c == 4 for c in pipe_counts))
 
@@ -209,7 +211,6 @@ class GenerateReadmeTest(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            # Generate README without external formatters
             main(
                 [
                     "--repo-root",
@@ -223,7 +224,6 @@ class GenerateReadmeTest(unittest.TestCase):
             content = out_file.read_text(encoding="utf-8")
             self.assertIn("dummy-skill", content)
 
-            # Verify --check passes when content matches
             with self.assertRaises(SystemExit) as cm:
                 main(
                     [
@@ -237,7 +237,6 @@ class GenerateReadmeTest(unittest.TestCase):
                 )
             self.assertEqual(cm.exception.code, 0)
 
-            # Modify output file to make it out of date
             out_file.write_text("Stale content\n", encoding="utf-8")
             with self.assertRaises(SystemExit) as cm:
                 main(
@@ -251,6 +250,13 @@ class GenerateReadmeTest(unittest.TestCase):
                     ]
                 )
             self.assertEqual(cm.exception.code, 1)
+
+    def test_get_default_template_placeholders(self):
+        """Should contain all required placeholder comments in template."""
+        template = get_default_template()
+        self.assertIn("<!-- SKILLS_COUNT -->", template)
+        self.assertIn("<!-- SKILLS_TABLE -->", template)
+        self.assertIn("<!-- SKILLS_DETAILS -->", template)
 
 
 if __name__ == "__main__":

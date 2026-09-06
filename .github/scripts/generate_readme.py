@@ -25,14 +25,14 @@ from pathlib import Path
 from typing import Any
 
 
-def parse_frontmatter(content: str) -> Mapping[str, Any]:
+def parse_frontmatter(content: str) -> dict[str, Any]:
     """Parses YAML frontmatter without external dependencies.
 
     Args:
         content: Raw markdown text containing frontmatter between '---' markers.
 
     Returns:
-        Mapping containing parsed key-value pairs and block scalars.
+        Dictionary containing parsed key-value pairs and block scalars.
     """
     match = re.match(r"^---\r?\n(.*?)\r?\n---\r?\n(.*)$", content, re.DOTALL)
     if not match:
@@ -218,14 +218,14 @@ def format_markdown(file_path: Path) -> None:
         )
 
 
-def collect_skills(repo_root: Path) -> Sequence[Mapping[str, Any]]:
+def collect_skills(repo_root: Path) -> list[dict[str, Any]]:
     """Discovers all skills with SKILL.md in immediate subdirectories.
 
     Args:
         repo_root: Path to repository root directory.
 
     Returns:
-        Sequence of mappings containing parsed skill metadata and component flags.
+        List of mappings containing parsed skill metadata and component flags.
     """
     skills = []
     for item in sorted(repo_root.iterdir()):
@@ -538,7 +538,8 @@ def main(argv: Sequence[str] | None = None) -> None:
 
         if current_content != expected_content:
             print(
-                f"Error: {output_path} is out of date or needs formatting. Run 'python3 .github/scripts/generate_readme.py' to update.",
+                f"Error: {output_path} is out of date or needs formatting. "
+                "Run 'python3 .github/scripts/generate_readme.py' to update.",
                 file=sys.stderr,
             )
             sys.exit(1)

@@ -8,6 +8,7 @@
 import io
 import json
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -71,7 +72,11 @@ class RunEvalTest(unittest.TestCase):
     @mock.patch("subprocess.run")
     def test_run_agent_eval_agy_mocked(self, mock_run: mock.MagicMock) -> None:
         """Should correctly format agy CLI invocation and parse output."""
-        mock_proc = mock.create_autospec(subprocess.CompletedProcess, instance=True)
+        mock_proc = mock.create_autospec(
+            subprocess.CompletedProcess(args=[], returncode=0),
+            instance=True,
+            spec_set=True,
+        )
         mock_proc.returncode = 0
         mock_proc.stdout = (
             "name: inspecting-logs\ndescription: >-\n  Use when X. Don't use for Y."
@@ -96,7 +101,11 @@ class RunEvalTest(unittest.TestCase):
     @mock.patch("subprocess.run")
     def test_run_agent_eval_failure_handling(self, mock_run: mock.MagicMock) -> None:
         """Should handle execution failure gracefully."""
-        mock_proc = mock.create_autospec(subprocess.CompletedProcess, instance=True)
+        mock_proc = mock.create_autospec(
+            subprocess.CompletedProcess(args=[], returncode=0),
+            instance=True,
+            spec_set=True,
+        )
         mock_proc.returncode = 1
         mock_proc.stdout = ""
         mock_proc.stderr = "Internal agent error occurred"
@@ -111,12 +120,36 @@ class RunEvalTest(unittest.TestCase):
         self.assertFalse(passed)
         self.assertTrue(len(failures) > 0)
 
+    def test_run_agent_eval_unsupported_backend(self) -> None:
+        """Should return failure when unsupported backend is supplied."""
+        case = {"id": 1, "prompt": "test"}
+        passed, failures = run_agent_eval(case, backend="unsupported")
+        self.assertFalse(passed)
+        self.assertIn("Unsupported backend", failures[0])
+
     @mock.patch("sys.stderr", new_callable=io.StringIO)
     def test_main_cli_missing_file(self, mock_stderr: io.StringIO) -> None:
         """Should return code 1 when evals file does not exist."""
         code = main(["--evals-file", "/path/to/nonexistent/evals.json"])
         self.assertEqual(code, 1)
         self.assertIn("not found", mock_stderr.getvalue())
+
+    @mock.patch("sys.stderr", new_callable=io.StringIO)
+    def test_main_cli_corrupted_evals_file(self, mock_stderr: io.StringIO) -> None:
+        """Should return code 1 when evals file contains invalid JSON."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            corrupt = Path(temp_dir) / "evals.json"
+            corrupt.write_text("{corrupt: json", encoding="utf-8")
+            code = main(["--evals-file", str(corrupt)])
+            self.assertEqual(code, 1)
+            self.assertIn("Error parsing evals file", mock_stderr.getvalue())
+
+    @mock.patch("sys.stderr", new_callable=io.StringIO)
+    def test_main_cli_nonexistent_eval_id(self, mock_stderr: io.StringIO) -> None:
+        """Should return code 1 when requested eval ID is not found."""
+        code = main(["--eval-id", "9999", "--static"])
+        self.assertEqual(code, 1)
+        self.assertIn("No test case found with id 9999", mock_stderr.getvalue())
 
     @mock.patch("sys.stdout", new_callable=io.StringIO)
     def test_main_cli_static_run(self, mock_stdout: io.StringIO) -> None:

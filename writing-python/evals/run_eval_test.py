@@ -8,6 +8,7 @@
 import io
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -25,7 +26,7 @@ from run_eval import (
 
 
 class RunEvalTest(unittest.TestCase):
-    """Test suite covering Python quality expectations and static benchmark evaluations."""
+    """Test suite for Python quality expectations and benchmark evaluation."""
 
     def test_collections_abc_check(self):
         """Should detect collections.abc abstractions."""
@@ -105,6 +106,25 @@ class RunEvalTest(unittest.TestCase):
         self.assertEqual(cm.exception.code, 1)
         self.assertIn("Dataset not found", mock_stderr.getvalue())
 
+    @mock.patch("sys.stderr", new_callable=io.StringIO)
+    def test_main_corrupted_json_dataset_exits_one(self, mock_stderr: io.StringIO):
+        """Should exit with 1 when dataset contains invalid JSON."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            bad_file = Path(temp_dir) / "corrupt.json"
+            bad_file.write_text("{bad: json", encoding="utf-8")
+            with self.assertRaises(SystemExit) as cm:
+                main(["--dataset", str(bad_file)])
+            self.assertEqual(cm.exception.code, 1)
+            self.assertIn("Error reading JSON dataset", mock_stderr.getvalue())
+
+    @mock.patch("sys.stderr", new_callable=io.StringIO)
+    def test_main_nonexistent_eval_id_exits_one(self, mock_stderr: io.StringIO):
+        """Should exit with 1 when requested eval ID is not found."""
+        with self.assertRaises(SystemExit) as cm:
+            main(["--eval-id", "9999", "--backend", "static"])
+        self.assertEqual(cm.exception.code, 1)
+        self.assertIn("No test case found with id 9999", mock_stderr.getvalue())
+
     @mock.patch("sys.stdout", new_callable=io.StringIO)
     def test_main_static_execution_single_test(self, mock_stdout: io.StringIO):
         """CLI execution of single static test should pass cleanly."""
@@ -113,6 +133,36 @@ class RunEvalTest(unittest.TestCase):
         self.assertEqual(cm.exception.code, 0)
         self.assertIn("Test 01", mock_stdout.getvalue())
         self.assertIn("1/1 passed", mock_stdout.getvalue())
+
+    def test_run_agent_eval_subprocess_error(self):
+        """Should handle subprocess timeout or failure gracefully."""
+        case = {"id": 1, "prompt": "test"}
+        with mock.patch("shutil.which", return_value="/bin/dummy"):
+            with mock.patch("subprocess.run", side_effect=OSError("Process failed")):
+                passed, failures = run_agent_eval(case, backend="agy")
+                self.assertFalse(passed)
+                self.assertIn("Backend execution error", failures[0])
+
+    def test_check_python_expectation_additional_rules(self):
+        """Should verify type narrowing, PEP 604, exceptions, and uv init rules."""
+        ok_narrow, _ = check_python_expectation(
+            "if x is None: return", "type narrowing"
+        )
+        self.assertTrue(ok_narrow)
+
+        ok_union, _ = check_python_expectation("x: str | None = None", "T | None")
+        self.assertTrue(ok_union)
+
+        ok_exc, _ = check_python_expectation(
+            "try:\n  pass\nexcept (OSError, UnicodeDecodeError): pass",
+            "specific expected exceptions",
+        )
+        self.assertTrue(ok_exc)
+
+        ok_init, _ = check_python_expectation(
+            "uv init --bare --no-readme --vcs none my_pkg", "uv init"
+        )
+        self.assertTrue(ok_init)
 
 
 if __name__ == "__main__":

@@ -85,7 +85,9 @@ def check_python_expectation(text: str, expectation: str) -> tuple[bool, str]:
     ):
         has_legacy = bool(
             re.search(
-                r"(typing\.(List|Dict|Tuple|Optional|Union)|from typing import[^\n]*\b(List|Dict|Tuple|Optional|Union)\b|\b(List|Dict|Tuple)\[)",
+                r"(typing\.(List|Dict|Tuple|Optional|Union)"
+                r"|from typing import[^\n]*\b(List|Dict|Tuple|Optional|Union)\b"
+                r"|\b(List|Dict|Tuple)\[)",
                 text,
             )
         )
@@ -146,16 +148,52 @@ def evaluate_static_benchmark(
     expectations: Sequence[str] = test_case.get("expectations", [])
 
     sample_solutions = {
-        1: "from collections.abc import Sequence\ndef process(items: Sequence[str]) -> list[str]:\n    return list(items)\n",
-        2: "from collections.abc import Mapping\ndef configure(cfg: Mapping[str, Any]) -> None:\n    pass\n",
-        3: "from collections.abc import Mapping, Sequence\ndef fn(a: str | None, b: int | float) -> None:\n    pass\n",
-        4: "def greet(name: str | None) -> str:\n    val = name or ''\n    return f'Hello {val}'\n",
-        5: "import unittest\nclass DataTest(unittest.TestCase):\n    pass\nif __name__ == '__main__':\n    unittest.main()\n",
+        1: (
+            "from collections.abc import Sequence\n"
+            "def process(items: Sequence[str]) -> list[str]:\n"
+            "    return list(items)\n"
+        ),
+        2: (
+            "from collections.abc import Mapping\n"
+            "def configure(cfg: Mapping[str, Any]) -> None:\n"
+            "    pass\n"
+        ),
+        3: (
+            "from collections.abc import Mapping, Sequence\n"
+            "def fn(a: str | None, b: int | float) -> None:\n"
+            "    pass\n"
+        ),
+        4: (
+            "def greet(name: str | None) -> str:\n"
+            "    val = name or ''\n"
+            "    return f'Hello {val}'\n"
+        ),
+        5: (
+            "import unittest\n"
+            "class DataTest(unittest.TestCase):\n"
+            "    pass\n"
+            "if __name__ == '__main__':\n"
+            "    unittest.main()\n"
+        ),
         6: "import subprocess\nsubprocess.run(['git', 'status'], check=False)\n",
         7: "try:\n    pass\nexcept (OSError, UnicodeDecodeError) as e:\n    pass\n",
-        8: "#!/usr/bin/env python3\n# /// script\n# requires-python = '>=3.11'\n# dependencies = []\n# ///\n",
+        8: (
+            "#!/usr/bin/env python3\n"
+            "# /// script\n"
+            "# requires-python = '>=3.11'\n"
+            "# dependencies = []\n"
+            "# ///\n"
+        ),
         9: "uv init --bare --no-readme --vcs none my_project\n",
-        10: "repos:\n  - repo: local\n    hooks:\n      - id: ruff\n        entry: uvx ruff check .\n      - id: pyright\n        entry: uvx pyright .\n",
+        10: (
+            "repos:\n"
+            "  - repo: local\n"
+            "    hooks:\n"
+            "      - id: ruff\n"
+            "        entry: uvx ruff check .\n"
+            "      - id: pyright\n"
+            "        entry: uvx pyright .\n"
+        ),
     }
 
     solution = sample_solutions.get(test_id) or test_case.get("expected_output") or ""
@@ -277,9 +315,10 @@ def main(argv: Sequence[str] | None = None) -> None:
             print(f"No test case found with id {args.eval_id}", file=sys.stderr)
             sys.exit(1)
 
+    skill_name = dataset.get("skill_name", "writing-python")
     print(
         f"{TermColor.BOLD}Running {len(eval_cases)} evaluation(s) for "
-        f"'{dataset.get('skill_name', 'writing-python')}' (backend: {args.backend}){TermColor.RESET}\n"
+        f"'{skill_name}' (backend: {args.backend}){TermColor.RESET}\n"
     )
 
     passed_count = 0
@@ -301,17 +340,20 @@ def main(argv: Sequence[str] | None = None) -> None:
         if passed:
             passed_count += 1
             print(
-                f"{TermColor.GREEN}[PASS]{TermColor.RESET} Test {cid:02d}: {prompt_snippet}"
+                f"{TermColor.GREEN}[PASS]{TermColor.RESET} "
+                f"Test {cid:02d}: {prompt_snippet}"
             )
         else:
             print(
-                f"{TermColor.RED}[FAIL]{TermColor.RESET} Test {cid:02d}: {prompt_snippet}"
+                f"{TermColor.RED}[FAIL]{TermColor.RESET} "
+                f"Test {cid:02d}: {prompt_snippet}"
             )
             for fail in failures:
                 print(f"       - {fail}")
 
     print(
-        f"\n{TermColor.BOLD}=== Results: {passed_count}/{total_count} passed ==={TermColor.RESET}"
+        f"\n{TermColor.BOLD}=== Results: "
+        f"{passed_count}/{total_count} passed ==={TermColor.RESET}"
     )
 
     if passed_count < total_count:

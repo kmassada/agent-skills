@@ -89,6 +89,20 @@ class CheckPythonTest(unittest.TestCase):
         if cmd:
             self.assertIn("ruff", cmd)
 
+    def test_get_uv_tool_cmd_uv_fallback(self):
+        """Should fallback to uv tool run when uvx is absent."""
+
+        def which_side_effect(tool: str) -> str | None:
+            if tool == "uvx":
+                return None
+            if tool == "uv":
+                return "/usr/local/bin/uv"
+            return None
+
+        with mock.patch("shutil.which", side_effect=which_side_effect):
+            cmd = get_uv_tool_cmd("ruff")
+            self.assertEqual(cmd, ["/usr/local/bin/uv", "tool", "run", "ruff"])
+
     def test_get_uv_tool_cmd_when_missing(self):
         """Should return None when both uvx and uv are missing from PATH."""
         with mock.patch("shutil.which", return_value=None):
@@ -134,6 +148,64 @@ class CheckPythonTest(unittest.TestCase):
                 main([str(temp_dir)])
             self.assertEqual(cm.exception.code, 0)
             self.assertIn("All Python quality gates passed", mock_stdout.getvalue())
+
+    @mock.patch("check_python.check_pyright", return_value=(True, "Pyright clean"))
+    @mock.patch("check_python.check_ruff", return_value=(False, "Ruff error"))
+    @mock.patch("sys.stdout", new_callable=io.StringIO)
+    def test_main_ruff_failure_exits_one(
+        self,
+        mock_stdout: io.StringIO,
+        mock_ruff: mock.MagicMock,
+        mock_pyright: mock.MagicMock,
+    ):
+        """Should report failure and exit 1 when ruff fails."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaises(SystemExit) as cm:
+                main([str(temp_dir)])
+            self.assertEqual(cm.exception.code, 1)
+            self.assertIn("Quality gate failures detected", mock_stdout.getvalue())
+
+    @mock.patch("check_python.check_pyright", return_value=(False, "Pyright error"))
+    @mock.patch("check_python.check_ruff", return_value=(True, "Ruff clean"))
+    @mock.patch("sys.stdout", new_callable=io.StringIO)
+    def test_main_pyright_failure_exits_one(
+        self,
+        mock_stdout: io.StringIO,
+        mock_ruff: mock.MagicMock,
+        mock_pyright: mock.MagicMock,
+    ):
+        """Should report failure and exit 1 when pyright fails."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaises(SystemExit) as cm:
+                main([str(temp_dir)])
+            self.assertEqual(cm.exception.code, 1)
+            self.assertIn("Quality gate failures detected", mock_stdout.getvalue())
+
+    @mock.patch("check_python.check_pyright", return_value=(True, "Pyright clean"))
+    @mock.patch("check_python.check_ruff", return_value=(True, "Ruff clean"))
+    @mock.patch("sys.stdout", new_callable=io.StringIO)
+    def test_main_failing_tests_exits_one(
+        self,
+        mock_stdout: io.StringIO,
+        mock_ruff: mock.MagicMock,
+        mock_pyright: mock.MagicMock,
+    ):
+        """Should report failure and exit 1 when companion tests fail."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            test_file = Path(temp_dir) / "failing_test.py"
+            test_file.write_text(
+                "import unittest\n"
+                "class FTest(unittest.TestCase):\n"
+                "    def test_f(self):\n"
+                "        self.fail('fail')\n"
+                "if __name__ == '__main__':\n"
+                "    unittest.main()\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(SystemExit) as cm:
+                main([str(temp_dir)])
+            self.assertEqual(cm.exception.code, 1)
+            self.assertIn("Quality gate failures detected", mock_stdout.getvalue())
 
 
 if __name__ == "__main__":

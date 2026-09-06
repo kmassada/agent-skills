@@ -42,7 +42,7 @@ class AuditResult:
         return len(self.errors) == 0
 
 
-def parse_frontmatter(content: str) -> tuple[Mapping[str, Any], str, Sequence[str]]:
+def parse_frontmatter(content: str) -> tuple[dict[str, Any], str, list[str]]:
     """Extracts and parses YAML frontmatter without external YAML dependencies.
 
     Args:
@@ -197,7 +197,8 @@ def audit_frontmatter(
     )
     if not any(t in lower_desc for t in neg_triggers):
         result.warnings.append(
-            "Description should explicitly specify negative guardrails ('Don't use for...')."
+            "Description should explicitly specify negative guardrails "
+            "('Don't use for...')."
         )
 
 
@@ -266,8 +267,9 @@ def audit_markdown_content(content: str, skill_dir: Path, result: AuditResult) -
                     re.match(r"^(\*|-|\d+\.|#|>|---|\|)", prev_line)
                 ):
                     result.warnings.append(
-                        f"Line {idx}: List item '{stripped[:30]}...' immediately follows text "
-                        "without a blank separating line. This may cause markdown compression."
+                        f"Line {idx}: List item '{stripped[:30]}...' immediately "
+                        "follows text without a blank separating line. "
+                        "This may cause markdown compression."
                     )
             in_list = True
 
@@ -284,7 +286,8 @@ def audit_markdown_content(content: str, skill_dir: Path, result: AuditResult) -
             target_path = (skill_dir / link_target).resolve()
             if not target_path.exists():
                 result.errors.append(
-                    f"Line {idx}: Broken relative link '{link_target}' target does not exist."
+                    f"Line {idx}: Broken relative link '{link_target}' "
+                    "target does not exist."
                 )
 
 
@@ -319,7 +322,8 @@ def audit_scripts(skill_dir: Path, result: AuditResult) -> None:
                 lines = content.splitlines()
                 if not lines or not lines[0].startswith("#!/usr/bin/env python3"):
                     result.warnings.append(
-                        f"Script '{rel_path}' missing standard shebang '#!/usr/bin/env python3' on line 1."
+                        f"Script '{rel_path}' missing standard shebang "
+                        "'#!/usr/bin/env python3' on line 1."
                     )
                 try:
                     ast.parse(content, filename=str(script_path))
@@ -334,7 +338,8 @@ def audit_scripts(skill_dir: Path, result: AuditResult) -> None:
                     ("#!/bin/bash", "#!/usr/bin/env bash", "#!/bin/sh")
                 ):
                     result.warnings.append(
-                        f"Shell script '{rel_path}' missing standard shebang '#!/usr/bin/env bash' on line 1."
+                        f"Shell script '{rel_path}' missing standard shebang "
+                        "'#!/usr/bin/env bash' on line 1."
                     )
 
 
@@ -351,7 +356,8 @@ def audit_evals_json(
     evals_file = skill_dir / "evals" / "evals.json"
     if not evals_file.is_file():
         result.recommendations.append(
-            "No evals/evals.json benchmark suite found. Consider adding automated evaluation cases."
+            "No evals/evals.json benchmark suite found. "
+            "Consider adding automated evaluation cases."
         )
         return
 
@@ -368,7 +374,8 @@ def audit_evals_json(
     json_skill_name = data.get("skill_name")
     if skill_name and json_skill_name != skill_name:
         result.errors.append(
-            f"evals/evals.json skill_name '{json_skill_name}' does not match SKILL.md name '{skill_name}'."
+            f"evals/evals.json skill_name '{json_skill_name}' "
+            f"does not match SKILL.md name '{skill_name}'."
         )
 
     cases = data.get("evals")
@@ -384,7 +391,8 @@ def audit_evals_json(
         for req_field in ("id", "prompt", "expected_output", "expectations"):
             if req_field not in case:
                 result.errors.append(
-                    f"evals/evals.json case #{idx} is missing required field '{req_field}'."
+                    f"evals/evals.json case #{idx} is missing required field "
+                    f"'{req_field}'."
                 )
 
         prompt = case.get("prompt", "")
@@ -394,9 +402,11 @@ def audit_evals_json(
                 tool in lower_prompt
                 for tool in ("run_command", "view_file", "write_to_file")
             ):
+                cid = case.get("id", idx)
                 result.warnings.append(
-                    f"evals/evals.json case #{case.get('id', idx)}: Prompt mentions specific tool names. "
-                    "Evals should describe the authentic task outcome, not dictate tool usage."
+                    f"evals/evals.json case #{cid}: Prompt mentions specific "
+                    "tool names. Evals should describe the authentic task "
+                    "outcome, not dictate tool usage."
                 )
 
 
@@ -439,13 +449,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     """CLI orchestrator for skill auditing.
 
     Args:
-        argv: Optional command-line argument list.
+        argv: Optional command-line argument sequence.
 
     Returns:
         Exit code: 0 if passed, 1 if blocking errors found.
     """
     parser = argparse.ArgumentParser(
-        description="Audit an agent skill directory against quality and formatting standards."
+        description=(
+            "Audit an agent skill directory against quality and formatting standards."
+        )
     )
     parser.add_argument("skill_dir", help="Path to the skill directory to audit.")
     parser.add_argument(

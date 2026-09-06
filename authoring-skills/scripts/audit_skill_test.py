@@ -14,8 +14,10 @@ from unittest import mock
 
 from audit_skill import (
     AuditResult,
+    audit_evals_json,
     audit_frontmatter,
     audit_markdown_content,
+    audit_scripts,
     audit_skill,
     main,
     parse_frontmatter,
@@ -24,6 +26,13 @@ from audit_skill import (
 
 class AuditSkillTest(unittest.TestCase):
     """Hermetic unit tests for audit_skill functions and CLI orchestrator."""
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.sandbox = Path(self.temp_dir.name)
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
 
     def test_parse_frontmatter_valid(self) -> None:
         """Should parse folded scalar frontmatter correctly."""
@@ -87,14 +96,14 @@ class AuditSkillTest(unittest.TestCase):
             print('hello')
             ```
         """)
-        audit_markdown_content(content, Path("/tmp"), result)
+        audit_markdown_content(content, self.sandbox, result)
         self.assertTrue(any("Malformed code block" in e for e in result.errors))
 
     def test_audit_markdown_missing_h1(self) -> None:
         """Should require a top-level H1 header in markdown body."""
         result = AuditResult()
         content = "## Only H2\nSome content without H1.\n"
-        audit_markdown_content(content, Path("/tmp"), result)
+        audit_markdown_content(content, self.sandbox, result)
         self.assertTrue(any("top-level '# [Skill Name]'" in e for e in result.errors))
 
     def test_audit_markdown_broken_relative_links(self) -> None:
@@ -166,6 +175,111 @@ class AuditSkillTest(unittest.TestCase):
             code = main([str(skill_dir)])
             self.assertEqual(code, 0)
             self.assertIn("Audit", mock_stdout.getvalue())
+
+    def test_audit_scripts_python_missing_shebang(self) -> None:
+        """Should warn when Python script is missing #!/usr/bin/env python3."""
+        scripts_dir = self.sandbox / "scripts"
+        scripts_dir.mkdir()
+        (scripts_dir / "tool.py").write_text("print('hello')\n", encoding="utf-8")
+
+        result = AuditResult()
+        audit_scripts(self.sandbox, result)
+        self.assertTrue(any("missing standard shebang" in w for w in result.warnings))
+
+    def test_audit_scripts_python_syntax_error(self) -> None:
+        """Should error when Python script contains syntax errors."""
+        scripts_dir = self.sandbox / "scripts"
+        scripts_dir.mkdir()
+        (scripts_dir / "tool.py").write_text(
+            "#!/usr/bin/env python3\ndef broken(:\n", encoding="utf-8"
+        )
+
+        result = AuditResult()
+        audit_scripts(self.sandbox, result)
+        self.assertTrue(any("contains syntax error" in e for e in result.errors))
+
+    def test_audit_scripts_shell_missing_shebang(self) -> None:
+        """Should warn when shell script is missing bash shebang."""
+        scripts_dir = self.sandbox / "scripts"
+        scripts_dir.mkdir()
+        (scripts_dir / "run.sh").write_text("echo test\n", encoding="utf-8")
+
+        result = AuditResult()
+        audit_scripts(self.sandbox, result)
+        self.assertTrue(any("missing standard shebang" in w for w in result.warnings))
+
+    def test_audit_evals_json_invalid_json(self) -> None:
+        """Should error when evals/evals.json contains corrupted JSON."""
+        evals_dir = self.sandbox / "evals"
+        evals_dir.mkdir()
+        (evals_dir / "evals.json").write_text("{corrupt: json", encoding="utf-8")
+
+        result = AuditResult()
+        audit_evals_json(self.sandbox, "my-skill", result)
+        self.assertTrue(any("not valid JSON" in e for e in result.errors))
+
+    def test_audit_evals_json_name_mismatch(self) -> None:
+        """Should error when evals.json skill_name does not match SKILL.md."""
+        evals_dir = self.sandbox / "evals"
+        evals_dir.mkdir()
+        (evals_dir / "evals.json").write_text(
+            '{"skill_name": "other-skill", "evals": []}', encoding="utf-8"
+        )
+
+        result = AuditResult()
+        audit_evals_json(self.sandbox, "my-skill", result)
+        self.assertTrue(any("does not match" in e for e in result.errors))
+
+    def test_audit_evals_json_missing_case_fields(self) -> None:
+        """Should error when an eval case lacks required schema fields."""
+        evals_dir = self.sandbox / "evals"
+        evals_dir.mkdir()
+        (evals_dir / "evals.json").write_text(
+            '{"skill_name": "my-skill", "evals": [{"id": 1}]}',
+            encoding="utf-8",
+        )
+
+        result = AuditResult()
+        audit_evals_json(self.sandbox, "my-skill", result)
+        self.assertTrue(any("missing required field" in e for e in result.errors))
+
+    def test_audit_evals_json_tool_name_warning(self) -> None:
+        """Should warn when an eval prompt explicitly names internal tools."""
+        evals_dir = self.sandbox / "evals"
+        evals_dir.mkdir()
+        payload = (
+            '{"skill_name": "my-skill", "evals": [{'
+            '"id": 1, "prompt": "use run_command to check", '
+            '"expected_output": "out", "expectations": ["pass"]}]}'
+        )
+        (evals_dir / "evals.json").write_text(payload, encoding="utf-8")
+
+        result = AuditResult()
+        audit_evals_json(self.sandbox, "my-skill", result)
+        self.assertTrue(
+            any("Prompt mentions specific tool" in w for w in result.warnings)
+        )
+
+    @mock.patch("sys.stdout", new_callable=io.StringIO)
+    def test_main_cli_strict_with_warnings_fails(
+        self, mock_stdout: io.StringIO
+    ) -> None:
+        """Should exit 1 under --strict when warnings exist."""
+        skill_md = textwrap.dedent("""\
+            ---
+            name: warning-skill
+            description: Plain description lacking triggers.
+            ---
+
+            # Warning Skill
+
+            Overview text.
+        """)
+        (self.sandbox / "SKILL.md").write_text(skill_md, encoding="utf-8")
+
+        code = main(["--strict", str(self.sandbox)])
+        self.assertEqual(code, 1)
+        self.assertIn("Audit failed", mock_stdout.getvalue())
 
 
 if __name__ == "__main__":

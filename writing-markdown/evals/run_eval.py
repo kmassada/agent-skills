@@ -137,12 +137,29 @@ def evaluate_static_benchmark(
     # Sample canonical solutions corresponding to benchmark test cases
     sample_solutions = {
         1: "Prerequisites:\n\n* Docker\n* Git\n",
-        2: "2. Step two with code:\n\n    ```bash\n    git status\n    ```\n\n3. Step three\n",
-        3: "```bash\ndocker run -d \\\n  --name web \\\n  -p 8080:80 \\\n  nginx:latest\n```\n",
-        4: "\n> [!WARNING]\n> API rate limit reached. Wait 60 seconds before retrying.\n\n",
+        2: (
+            "2. Step two with code:\n\n"
+            "    ```bash\n"
+            "    git status\n"
+            "    ```\n\n"
+            "3. Step three\n"
+        ),
+        3: (
+            "```bash\n"
+            "docker run -d \\\n"
+            "  --name web \\\n"
+            "  -p 8080:80 \\\n"
+            "  nginx:latest\n"
+            "```\n"
+        ),
+        4: (
+            "\n> [!WARNING]\n"
+            "> API rate limit reached. Wait 60 seconds before retrying.\n\n"
+        ),
         5: (
-            "This is a sample paragraph formatted cleanly so that no line exceeds eighty\n"
-            "characters in length, strictly satisfying standard markdownlint rules.\n"
+            "This is a sample paragraph formatted cleanly so that no line "
+            "exceeds eighty\ncharacters in length, strictly satisfying "
+            "standard markdownlint rules.\n"
         ),
         6: 'Wait 1-2s. "Hello world" -- see status.\n',
         7: "Run: > agy --help\n",
@@ -274,9 +291,10 @@ def main(argv: Sequence[str] | None = None) -> None:
             print(f"No test case found with id {args.eval_id}", file=sys.stderr)
             sys.exit(1)
 
+    skill_name = dataset.get("skill_name", "writing-markdown")
     print(
         f"{TermColor.BOLD}Running {len(eval_cases)} evaluation(s) for "
-        f"'{dataset.get('skill_name', 'writing-markdown')}' (backend: {args.backend}){TermColor.RESET}\n"
+        f"'{skill_name}' (backend: {args.backend}){TermColor.RESET}\n"
     )
 
     passed_count = 0
@@ -298,17 +316,20 @@ def main(argv: Sequence[str] | None = None) -> None:
         if passed:
             passed_count += 1
             print(
-                f"{TermColor.GREEN}[PASS]{TermColor.RESET} Test {cid:02d}: {prompt_snippet}"
+                f"{TermColor.GREEN}[PASS]{TermColor.RESET} "
+                f"Test {cid:02d}: {prompt_snippet}"
             )
         else:
             print(
-                f"{TermColor.RED}[FAIL]{TermColor.RESET} Test {cid:02d}: {prompt_snippet}"
+                f"{TermColor.RED}[FAIL]{TermColor.RESET} "
+                f"Test {cid:02d}: {prompt_snippet}"
             )
             for fail in failures:
                 print(f"       - {fail}")
 
     print(
-        f"\n{TermColor.BOLD}=== Results: {passed_count}/{total_count} passed ==={TermColor.RESET}"
+        f"\n{TermColor.BOLD}=== Results: "
+        f"{passed_count}/{total_count} passed ==={TermColor.RESET}"
     )
 
     if passed_count < total_count:

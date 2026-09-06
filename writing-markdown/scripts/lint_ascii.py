@@ -30,7 +30,7 @@ REPLACEMENTS = {
 }
 
 # Standard Unicode box-drawing characters (used in ASCII-art tree diagrams)
-ALLOWED_BOX_DRAWING = set("─│┌┐└┘├┤┬┴┼═║╒╓╔╕╖╗╘╙╚╛╜╝╞╟╠╡╢╣╤╥╦╧╨╩╪╫╬")
+ALLOWED_BOX_DRAWING = frozenset("─│┌┐└┘├┤┬┴┼═║╒╓╔╕╖╗╘╙╚╛╜╝╞╟╠╡╢╣╤╥╦╧╨╩╪╫╬")
 
 
 def process_file(
@@ -59,7 +59,7 @@ def process_file(
 
         for orig, repl in REPLACEMENTS.items():
             if orig in new_line:
-                # Don't auto-replace inside rule definition lines explaining the characters
+                # Skip replacement inside rule definitions documenting characters
                 if "U+276F" in new_line and orig == "\u276f":
                     continue
                 if "U+2018" in new_line or "U+201C" in new_line or "U+2014" in new_line:
@@ -68,7 +68,8 @@ def process_file(
                 count = new_line.count(orig)
                 char_name = f"U+{ord(orig):04X} ('{orig}')"
                 issues.append(
-                    f"{file_path}:{line_num}: Found {count}x {char_name} -> suggest '{repl}'"
+                    f"{file_path}:{line_num}: Found {count}x {char_name} "
+                    f"-> suggest '{repl}'"
                 )
                 if fix:
                     new_line = new_line.replace(orig, repl)
@@ -79,7 +80,8 @@ def process_file(
                     if not check_all and ch in ALLOWED_BOX_DRAWING:
                         continue
                     issues.append(
-                        f"{file_path}:{line_num}:{col_num}: Non-basic ASCII U+{ord(ch):04X} ('{ch}')"
+                        f"{file_path}:{line_num}:{col_num}: "
+                        f"Non-basic ASCII U+{ord(ch):04X} ('{ch}')"
                     )
 
         modified_content.append(new_line)
