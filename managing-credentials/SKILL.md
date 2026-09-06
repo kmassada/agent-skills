@@ -113,20 +113,22 @@ Use `doppler run -- <command>` to inject all secrets as environment variables:
 doppler run -- python3 scripts/my_agent_task.py
 ```
 
-### Configuring MCP Servers
+### Running Agents with MCP Servers
 
-Configure Model Context Protocol (MCP) servers to pull secrets dynamically:
+Keep MCP server definitions in `mcp_config.json` clean, portable, and free of
+credential wiring. Do not hardcode environment blocks or wrap individual MCP
+server commands with Doppler in the JSON definition.
 
-```json
-{
-  "mcpServers": {
-    "slack": {
-      "command": "doppler",
-      "args": ["run", "--", "npx", "-y", "@modelcontextprotocol/server-slack"]
-    }
-  }
-}
+Instead, launch the agent session via `doppler run`:
+
+```bash
+doppler run -- agy
 ```
+
+When the agent session runs under `doppler run`, all credentials (such as
+`SLACK_BOT_TOKEN` and `SLACK_TEAM_ID`) exist only in memory. Any child stdio
+MCP servers spawned by the agent automatically inherit those environment
+variables without touching disk.
 
 ---
 
@@ -137,7 +139,8 @@ Configure Model Context Protocol (MCP) servers to pull secrets dynamically:
 | **Committed `.env` file** | Exposes plaintext tokens to git history. | Use `doppler run -- <command>`. |
 | **Setting up Cloud Sync** | Unnecessary external attack surface for local dev. | Keep project local without sync. |
 | **Echoing secrets to logs** | Leaks tokens into shell logs or CI output. | Use `doppler secrets --names`. |
-| **Hardcoding in MCP configs** | Storing `xoxb-...` in JSON configs leaks tokens. | Wrap MCP commands with `doppler run`. |
+| **Hardcoding tokens in MCP configs** | Storing `xoxb-...` in JSON configs leaks tokens. | Launch agent session via `doppler run`. |
+| **Baking Doppler into MCP configs** | Couples MCP tool definitions to secret manager. | Inherit secrets from parent agent process. |
 
 ---
 

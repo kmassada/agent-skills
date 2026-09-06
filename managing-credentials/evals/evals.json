@@ -25,11 +25,11 @@
     {
       "id": 2,
       "prompt": "How do I run my Python agent script and configure an MCP server so they receive my Doppler credentials without writing a .env file to disk?",
-      "expected_output": "Explains using doppler run -- to inject environment variables into memory at runtime and shows configuring MCP server commands with doppler run.",
+      "expected_output": "Explains using doppler run -- to inject environment variables into memory at runtime and keeping MCP configs clean by launching the agent via doppler run.",
       "files": [],
       "expectations": [
         "Demonstrates runtime injection using doppler run -- <command>",
-        "Shows wrapping MCP server commands with doppler run",
+        "Explains launching agent session with doppler run to inherit credentials into MCP servers",
         "Emphasizes zero disk exposure and preventing plaintext tokens in git"
       ],
       "expected_command_patterns": [

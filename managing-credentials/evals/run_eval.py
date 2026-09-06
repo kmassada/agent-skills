@@ -109,8 +109,8 @@ def run_static_eval(
         2: (
             "Use `doppler run -- python3 scripts/my_agent.py` to inject "
             "environment variables into memory without writing .env to disk.\n"
-            "For MCP servers, configure: 'command': 'doppler', "
-            "'args': ['run', '--', 'npx', '-y', '@modelcontextprotocol/server-slack']."
+            "Keep MCP server configs clean and launch the agent session via "
+            "`doppler run -- agy` so MCP servers inherit credentials."
         ),
     }
 

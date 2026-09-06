@@ -5,73 +5,80 @@ templates and server setups for the `agent-skills` repository.
 
 ---
 
-## Configuration Overview
+## Configuration Philosophy: Decoupled & Credential-Agnostic
 
-The primary configuration file is [`mcp_config.json`](./mcp_config.json), which
-declares available MCP servers for Google Antigravity and Anthropic Claude Code.
+MCP server configurations in this repository are strictly **credential-agnostic**
+and decoupled from secret providers:
 
-### Active Servers
-
-* **`slack`**: Integrates Slack workspace interactions using the official
-  `@modelcontextprotocol/server-slack` server package.
+* **Zero Hardcoded Secrets**: Configuration files never contain API keys,
+  tokens, or passwords.
+* **Zero Baked-In Wrappers**: Configuration files do not hardcode wrapper
+  commands (like `doppler run` or custom loaders).
+* **Process Inheritance**: Stdio MCP servers automatically inherit environment
+  variables directly from the parent agent process at runtime.
 
 ---
 
-## Slack MCP Server Setup
+## Active MCP Servers
 
-### 1. Prerequisites
+### `slack`
 
-The Slack MCP server requires:
+Integrates Slack workspace interactions using the official
+`@modelcontextprotocol/server-slack` package.
 
-* Node.js and `npx` installed on the host.
-* A registered Slack App with Bot User OAuth permissions:
-  * `channels:read` (read public channel listings)
-  * `channels:history` (read messages and threads)
-  * `chat:write` (post messages to channels)
-  * `users:read` (resolve member details)
-
-### 2. Required Environment Variables
-
-The server expects two environment variables at runtime:
-
-* `SLACK_BOT_TOKEN`: The Bot User OAuth Token starting with `xoxb-...`.
-* `SLACK_TEAM_ID`: The unique Slack Workspace/Team ID starting with `T...`.
-
-### 3. Server Declaration
-
-Standard stdio transport declared in `mcp_config.json`:
+#### Server Declaration ([`mcp_config.json`](./mcp_config.json))
 
 ```json
 {
   "mcpServers": {
     "slack": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-slack"],
-      "env": {
-        "SLACK_BOT_TOKEN": "${SLACK_BOT_TOKEN}",
-        "SLACK_TEAM_ID": "${SLACK_TEAM_ID}"
-      }
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-slack"
+      ]
     }
   }
 }
 ```
 
+#### Expected Runtime Environment
+
+The Slack server process reads these variables from its inherited process
+environment:
+
+* `SLACK_BOT_TOKEN`: The Bot User OAuth Token starting with `xoxb-...`.
+* `SLACK_TEAM_ID`: The unique Slack Workspace/Team ID starting with `T...`.
+
+Required Slack App Bot User OAuth permissions:
+
+* `channels:read` (read public channel listings)
+* `channels:history` (read messages and threads)
+* `chat:write` (post messages to channels)
+* `users:read` (resolve member details)
+
 ---
 
-## Activation in Agent Clients
+## Runtime Credential Injection
 
-### Antigravity (`agy`)
+Because the server definition is decoupled, you choose how to inject credentials
+into the agent's environment:
 
-Copy or link the configuration into your Antigravity configuration file at
-`~/.gemini/config/mcp_config.json`:
+### Option A: Doppler Session Wrapping (Recommended for Local Dev)
+
+Launch the agent session via `doppler run`. All child MCP servers inherit the
+injected tokens without writing anything to disk:
 
 ```bash
-# Verify active environment variables
-echo "SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN:+SET}"
-echo "SLACK_TEAM_ID=${SLACK_TEAM_ID:+SET}"
+doppler run -- agy
 ```
 
-### Claude Code
+### Option B: Shell Environment
 
-Merge the `mcpServers` block into your Claude Code settings or project MCP
-configuration file.
+Export credentials in your local session or shell profile:
+
+```bash
+export SLACK_BOT_TOKEN="xoxb-..."
+export SLACK_TEAM_ID="T..."
+agy
+```
