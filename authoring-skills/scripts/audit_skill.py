@@ -303,9 +303,17 @@ def audit_scripts(skill_dir: Path, result: AuditResult) -> None:
         for script_path in folder.iterdir():
             if not script_path.is_file() or script_path.name.startswith("."):
                 continue
+            if script_path.suffix not in (".py", ".sh"):
+                continue
 
             rel_path = script_path.relative_to(skill_dir)
-            content = script_path.read_text(encoding="utf-8")
+            try:
+                content = script_path.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError) as e:
+                result.warnings.append(
+                    f"Script '{rel_path}' could not be read as UTF-8 text: {e}"
+                )
+                continue
 
             if script_path.suffix == ".py":
                 lines = content.splitlines()
