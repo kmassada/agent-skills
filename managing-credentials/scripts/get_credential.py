@@ -39,9 +39,26 @@ def resolve_from_bitwarden(
     """
     target = item_name or secret_name
 
+    # Auto-load ~/.local/bw_key.zsh if BWS_ACCESS_TOKEN not in env
+    if "BWS_ACCESS_TOKEN" not in os.environ:
+        bw_key_file = os.path.expanduser("~/.local/bw_key.zsh")
+        if os.path.exists(bw_key_file):
+            try:
+                with open(bw_key_file, encoding="utf-8") as f:
+                    for raw_line in f:
+                        clean_line = raw_line.strip()
+                        if clean_line.startswith("export "):
+                            clean_line = clean_line[7:].strip()
+                        if "=" in clean_line:
+                            k, _, v = clean_line.partition("=")
+                            os.environ[k.strip()] = v.strip().strip("'\"")
+            except OSError:
+                pass
+
     # Check Bitwarden Secrets Manager (bws)
     if shutil.which("bws") and os.environ.get("BWS_ACCESS_TOKEN"):
         try:
+            # 1. Try direct secret get
             res = subprocess.run(
                 ["bws", "secret", "get", target],
                 capture_output=True,
@@ -50,7 +67,52 @@ def resolve_from_bitwarden(
             )
             if res.returncode == 0 and res.stdout.strip():
                 data = json.loads(res.stdout)
-                return str(data.get("value", ""))
+                val_raw = str(data.get("value", ""))
+                try:
+                    val_json = json.loads(val_raw)
+                    if isinstance(val_json, dict):
+                        for k, v in val_json.items():
+                            if k.upper() in (
+                                secret_name.upper(),
+                                secret_name.upper().replace("SLACK_", "").lower(),
+                            ):
+                                return str(v)
+                except json.JSONDecodeError:
+                    return val_raw
+
+            # 2. Check candidate service secrets if target is a subfield
+            candidates = [target]
+            if "SLACK" in secret_name.upper():
+                candidates.extend(["slack_agents", "slack"])
+            if item_name:
+                candidates.insert(0, item_name)
+
+            proj_id = os.environ.get("BWS_PROJECT_ID")
+            list_cmd = ["bws", "secret", "list"] + ([proj_id] if proj_id else [])
+            list_res = subprocess.run(
+                list_cmd, capture_output=True, text=True, check=False
+            )
+            if list_res.returncode == 0 and list_res.stdout.strip():
+                secrets_list = json.loads(list_res.stdout)
+                for sec in secrets_list:
+                    sec_key = sec.get("key", "").lower()
+                    if any(cand.lower() == sec_key for cand in candidates):
+                        sec_val = sec.get("value", "")
+                        try:
+                            val_json = json.loads(sec_val)
+                            if isinstance(val_json, dict):
+                                # Check exact or normalized keys
+                                norm_keys = [
+                                    secret_name.upper(),
+                                    secret_name.lower(),
+                                    secret_name.lower().replace("slack_", ""),
+                                ]
+                                for k, v in val_json.items():
+                                    if k.upper() in norm_keys or k.lower() in norm_keys:
+                                        return str(v)
+                        except json.JSONDecodeError:
+                            if sec_key == secret_name.lower():
+                                return str(sec_val)
         except (subprocess.SubprocessError, json.JSONDecodeError, OSError):
             pass
 
