@@ -39,6 +39,43 @@
         "cat.*\\.env",
         "export\\s+SLACK_BOT_TOKEN="
       ]
+    },
+    {
+      "id": 3,
+      "prompt": "How do I retrieve credentials stored in my Bitwarden vault and launch an agent session without saving plaintext tokens to disk?",
+      "expected_output": "Explains using bw CLI or get_credential.py to unlock the vault and resolve credentials dynamically into agent process memory.",
+      "files": [],
+      "expectations": [
+        "Shows unlocking Bitwarden session or querying vault via bw CLI or get_credential.py",
+        "Demonstrates running agent with injected credentials directly into memory",
+        "Maintains zero plaintext credentials on host disk"
+      ],
+      "expected_command_patterns": [
+        "bw\\s+(login|unlock|get)",
+        "get_credential\\.py\\s+(get|run)"
+      ],
+      "forbidden_command_patterns": [
+        "echo.*>\\s*\\.env",
+        "cat.*\\.env"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "How do I resolve Slack tokens from Google Cloud Secret Manager for my work AI agent environment?",
+      "expected_output": "Explains querying GCP Secret Manager using gcloud secrets versions access or get_credential.py with project configuration.",
+      "files": [],
+      "expectations": [
+        "Uses gcloud secrets versions access or get_credential.py with GCP provider",
+        "Specifies GCP project configuration",
+        "Injects credentials into memory at runtime"
+      ],
+      "expected_command_patterns": [
+        "gcloud\\s+secrets\\s+versions\\s+access",
+        "get_credential\\.py"
+      ],
+      "forbidden_command_patterns": [
+        "echo.*>\\s*\\.env"
+      ]
     }
   ]
 }

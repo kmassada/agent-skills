@@ -70,6 +70,20 @@ def check_credential_expectation(text: str, expectation: str) -> tuple[bool, str
         has_match = "mcp" in lower_text or "servers" in lower_text
         return has_match, "Addresses MCP server configuration"
 
+    if "bitwarden" in lower_exp or "bw" in lower_exp:
+        has_match = (
+            "bw" in lower_text
+            or "bitwarden" in lower_text
+            or "get_credential" in lower_text
+        )
+        return has_match, "Addresses Bitwarden vault resolution"
+
+    if "gcp" in lower_exp or "google cloud" in lower_exp:
+        has_match = (
+            "gcloud" in lower_text or "gcp" in lower_text or "secret" in lower_text
+        )
+        return has_match, "Addresses GCP Secret Manager resolution"
+
     if "sync" in lower_exp or "warns" in lower_exp or "git" in lower_exp:
         has_guard = (
             "sync" in lower_text
@@ -111,6 +125,19 @@ def run_static_eval(
             "environment variables into memory without writing .env to disk.\n"
             "Keep MCP server configs clean and launch the agent session via "
             "`doppler run -- agy` so MCP servers inherit credentials."
+        ),
+        3: (
+            "Unlock your Bitwarden vault with `export BW_SESSION=$(bw unlock --raw)`.\n"
+            "Query credentials using `bw get item SLACK_BOT_TOKEN` or "
+            "`python3 scripts/get_credential.py get SLACK_BOT_TOKEN --provider bitwarden`.\n"
+            "Run your agent directly with `python3 scripts/get_credential.py run --keys SLACK_BOT_TOKEN -- agy`.\n"
+            "No plaintext tokens are written to .env or disk."
+        ),
+        4: (
+            "Authenticate with `gcloud auth login`.\n"
+            "Retrieve credentials via `gcloud secrets versions access latest --secret=SLACK_BOT_TOKEN`\n"
+            "or use `python3 scripts/get_credential.py get SLACK_BOT_TOKEN --provider gcp --project my-corp`.\n"
+            "Inject tokens into memory at runtime with `python3 scripts/get_credential.py run --keys SLACK_BOT_TOKEN -- agy`."
         ),
     }
 

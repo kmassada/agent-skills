@@ -5,13 +5,14 @@ compatible with both **Google Antigravity** and **Anthropic Claude Code**.
 
 ---
 
-## Catalog (6 Skills)
+## Catalog (7 Skills)
 
 | Skill                                                   | Summary                                                                                                                                                                                                                                                  | Components                       |
 | :------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------- |
 | [`authoring-skills`](authoring-skills/SKILL.md)         | Guides the creation, structuring, formatting, evaluating, and auditing of agent skills.                                                                                                                                                                  | `references`, `evals`, `scripts` |
+| [`controlling-kitty`](controlling-kitty/SKILL.md)       | Manages Kitty terminal emulator tabs, windows, and splits.                                                                                                                                                                                               | `references`, `evals`, `scripts` |
 | [`controlling-tmux`](controlling-tmux/SKILL.md)         | Manages tmux terminal sessions, windows, and panes.                                                                                                                                                                                                      | `references`, `evals`, `scripts` |
-| [`managing-credentials`](managing-credentials/SKILL.md) | Configures and manages credentials locally using Doppler without external cloud sync.                                                                                                                                                                    | `evals`, `scripts`               |
+| [`managing-credentials`](managing-credentials/SKILL.md) | Configures, resolves, and injects credentials from upstream vaults (Bitwarden, Google Cloud Secret Manager, Doppler) directly into memory at runtime without saving unencrypted plaintext files to disk.                                                 | `evals`, `scripts`               |
 | [`sharing-snips`](sharing-snips/SKILL.md)               | Provides a workflow and script to capture screenshots, automatically upload them to a Google Cloud Storage bucket using the Python client library, and copy the public URL to the macOS clipboard.                                                       | `evals`, `scripts`               |
 | [`writing-markdown`](writing-markdown/SKILL.md)         | Guides writing and formatting clean, lint-compliant Markdown documents.                                                                                                                                                                                  | `references`, `evals`, `scripts` |
 | [`writing-python`](writing-python/SKILL.md)             | Enforces modern, idiomatic Python standards, static typing with collections.abc and Pylance/Pyright, open-source readability via Ruff and PEP 8, deterministic execution with uv and PEP 723, companion test discipline, and pre-commit test automation. | `references`, `evals`, `scripts` |
@@ -36,6 +37,27 @@ compatible with both **Google Antigravity** and **Anthropic Claude Code**.
   - [`FORMAT.md`](authoring-skills/references/FORMAT.md)
 - **Scripts**: [`audit_skill.py`](authoring-skills/scripts/audit_skill.py)
 
+### [`controlling-kitty`](controlling-kitty/SKILL.md)
+
+> Manages Kitty terminal emulator tabs, windows, and splits. Creates tabs,
+> splits panes (vertical/horizontal), sends commands to specific windows,
+> quietly captures outputs without stealing user focus, inspects state via JSON,
+> navigates adjacent windows directionally, and dispatches AI agent sessions
+> into dedicated Kitty tabs and splits. Use when interacting with Kitty terminal
+> emulator, dispatching AI agents to Kitty tabs, running background tasks in
+> Kitty, reading outputs from persistent windows, or navigating adjacent Kitty
+> windows. Don't use for local subshell command execution, standard file
+> manipulation, or non-terminal workflows.
+
+- **Directory**: [`controlling-kitty/`](controlling-kitty/)
+- **Evaluations**: [`evals.json`](controlling-kitty/evals/evals.json)
+- **References**:
+  - [`AGENT_DISPATCH.md`](controlling-kitty/references/AGENT_DISPATCH.md)
+  - [`SOCKET_CONFIGURATION.md`](controlling-kitty/references/SOCKET_CONFIGURATION.md)
+- **Scripts**:
+  - [`dispatch_agent.py`](controlling-kitty/scripts/dispatch_agent.py)
+  - [`kitty_state.py`](controlling-kitty/scripts/kitty_state.py)
+
 ### [`controlling-tmux`](controlling-tmux/SKILL.md)
 
 > Manages tmux terminal sessions, windows, and panes. Creates windows, splits
@@ -58,16 +80,17 @@ compatible with both **Google Antigravity** and **Anthropic Claude Code**.
 
 ### [`managing-credentials`](managing-credentials/SKILL.md)
 
-> Configures and manages credentials locally using Doppler without external
-> cloud sync. Use when installing Doppler, authenticating locally, setting
-> secrets, or injecting environment variables into local scripts, agents, and
-> MCP servers. Don't use for configuring cloud sync integrations, CI/CD
-> deployments, Kubernetes operators, or unencrypted local dot-env files.
+> Configures, resolves, and injects credentials from upstream vaults (Bitwarden,
+> Google Cloud Secret Manager, Doppler) directly into memory at runtime without
+> saving unencrypted plaintext files to disk. Use when configuring secrets for
+> agents, syncing vault tokens to local runtime, or injecting credentials into
+> MCP servers. Don't use for unencrypted dot-env files or hardcoding secrets.
 
 - **Directory**: [`managing-credentials/`](managing-credentials/)
 - **Evaluations**: [`evals.json`](managing-credentials/evals/evals.json)
 - **Scripts**:
-  [`check_doppler.py`](managing-credentials/scripts/check_doppler.py)
+  - [`check_doppler.py`](managing-credentials/scripts/check_doppler.py)
+  - [`get_credential.py`](managing-credentials/scripts/get_credential.py)
 
 ### [`sharing-snips`](sharing-snips/SKILL.md)
 
