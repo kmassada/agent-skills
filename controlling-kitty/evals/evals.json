@@ -1,0 +1,304 @@
+{
+  "skill_name": "controlling-kitty",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Run pytest tests/test_api.py in window 2",
+      "expected_output": "Dispatches pytest tests/test_api.py to Kitty window 2 without executing it locally.",
+      "files": [],
+      "expectations": [
+        "The command is sent to window 2 using kitty @ send-text with match id:2",
+        "pytest tests/test_api.py is NOT executed directly in the agent's own subshell",
+        "The agent does NOT steal user focus with focus-window"
+      ],
+      "expected_command_patterns": [
+        "kitty @ send-text.*--match (id:)?2.*pytest tests/test_api\\.py"
+      ],
+      "forbidden_command_patterns": [
+        "^pytest tests/test_api\\.py"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "In window 3, run cargo build --release",
+      "expected_output": "Sends cargo build --release to Kitty window 3 without running it locally.",
+      "files": [],
+      "expectations": [
+        "The command is sent to window 3 using kitty @ send-text",
+        "cargo build is NOT executed directly in the agent's own subshell"
+      ],
+      "expected_command_patterns": [
+        "kitty @ send-text.*--match (id:)?3.*cargo build --release"
+      ],
+      "forbidden_command_patterns": [
+        "^cargo build --release"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "What is currently showing in window 1?",
+      "expected_output": "Captures and displays the visible output of Kitty window 1 without stealing focus.",
+      "files": [],
+      "expectations": [
+        "The agent reads the window output using kitty @ get-text --match id:1",
+        "The agent does NOT call focus-window or focus-tab to steal focus"
+      ],
+      "expected_command_patterns": [
+        "kitty @ get-text.*--match (id:)?1"
+      ],
+      "forbidden_command_patterns": [
+        "kitty @ focus-window",
+        "kitty @ focus-tab"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Check the full scrollback logs in window 2",
+      "expected_output": "Captures full scrollback history from Kitty window 2 using extent all.",
+      "files": [],
+      "expectations": [
+        "The agent uses kitty @ get-text with --extent=all for window 2",
+        "The agent does NOT call focus-window"
+      ],
+      "expected_command_patterns": [
+        "kitty @ get-text.*--match (id:)?2.*--extent=all"
+      ],
+      "forbidden_command_patterns": [
+        "kitty @ focus-window"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Focus window 2",
+      "expected_output": "Explicitly switches focus to Kitty window 2.",
+      "files": [],
+      "expectations": [
+        "The agent executes kitty @ focus-window --match id:2"
+      ],
+      "expected_command_patterns": [
+        "kitty @ focus-window.*--match (id:)?2"
+      ],
+      "forbidden_command_patterns": []
+    },
+    {
+      "id": 6,
+      "prompt": "Split the current window side-by-side",
+      "expected_output": "Splits the window vertically (side-by-side) in Kitty.",
+      "files": [],
+      "expectations": [
+        "The agent splits side-by-side using kitty @ launch with location=vsplit or location=split",
+        "The agent does NOT create an entirely separate OS window"
+      ],
+      "expected_command_patterns": [
+        "kitty @ launch.*--location=vsplit"
+      ],
+      "forbidden_command_patterns": [
+        "kitty @ launch.*--type=os-window"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Create a new tab named server",
+      "expected_output": "Creates a new tab named server in Kitty.",
+      "files": [],
+      "expectations": [
+        "The agent creates a new tab using kitty @ launch --type=tab --tab-title=server",
+        "The agent does NOT split the current window"
+      ],
+      "expected_command_patterns": [
+        "kitty @ launch.*--type=tab.*--tab-title=server"
+      ],
+      "forbidden_command_patterns": []
+    },
+    {
+      "id": 8,
+      "prompt": "Focus the window to the right",
+      "expected_output": "Directionally resolves and focuses the neighbor window to the right in Kitty.",
+      "files": [],
+      "expectations": [
+        "The agent targets the right neighbor using --match neighbor:right",
+        "The agent uses kitty @ focus-window"
+      ],
+      "expected_command_patterns": [
+        "kitty @ focus-window.*--match neighbor:right"
+      ],
+      "forbidden_command_patterns": []
+    },
+    {
+      "id": 9,
+      "prompt": "How do I split a comma-separated string in Python?",
+      "expected_output": "Explains Python string split method without executing Kitty commands.",
+      "files": [],
+      "expectations": [
+        "The agent does NOT execute any Kitty commands",
+        "The agent provides standard Python str.split() explanation"
+      ],
+      "expected_command_patterns": [],
+      "forbidden_command_patterns": [
+        "kitty @"
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "Run pytest tests/ locally in your current shell",
+      "expected_output": "Executes the command locally as explicitly instructed without sending text to Kitty.",
+      "files": [],
+      "expectations": [
+        "The agent does NOT send commands to Kitty using kitty @ send-text"
+      ],
+      "expected_command_patterns": [],
+      "forbidden_command_patterns": [
+        "kitty @ send-text"
+      ]
+    },
+    {
+      "id": 11,
+      "prompt": "Dispatch a new agent in a new Kitty tab to refactor the database schema",
+      "expected_output": "Spawns a detached Kitty tab running agy or dispatch_agent.py without blocking subshell.",
+      "files": [],
+      "expectations": [
+        "The agent creates a detached tab running agy or uses dispatch_agent.py",
+        "The agent does NOT invoke agy directly in the local subshell"
+      ],
+      "expected_command_patterns": [
+        "(kitty @ launch.*--type=tab.*agy|dispatch_agent\\.py)"
+      ],
+      "forbidden_command_patterns": []
+    },
+    {
+      "id": 12,
+      "prompt": "Open a side-by-side split beside me connected to conversation d202f5d4-f6b7-4b75-bdb3-03679b8122fa",
+      "expected_output": "Splits the current window side-by-side and connects to the specified conversation ID.",
+      "files": [],
+      "expectations": [
+        "The agent splits using kitty @ launch --location=vsplit or dispatch_agent.py",
+        "The agent targets the specified conversation ID with agy --conversation"
+      ],
+      "expected_command_patterns": [
+        "(kitty @ launch.*--conversation|dispatch_agent\\.py.*--conversation)"
+      ],
+      "forbidden_command_patterns": []
+    },
+    {
+      "id": 13,
+      "prompt": "Get the output of the last command executed in window 2",
+      "expected_output": "Extracts semantic command output using --extent=last_cmd_output on window 2.",
+      "files": [],
+      "expectations": [
+        "The agent captures output using kitty @ get-text with --extent=last_cmd_output",
+        "The agent targets window 2 with --match id:2"
+      ],
+      "expected_command_patterns": [
+        "kitty @ get-text.*--match (id:)?2.*--extent=last_cmd_output"
+      ],
+      "forbidden_command_patterns": []
+    },
+    {
+      "id": 14,
+      "prompt": "Inspect all active Kitty windows and tabs",
+      "expected_output": "Queries kitty @ ls or kitty_state.py to inspect the full terminal state tree.",
+      "files": [],
+      "expectations": [
+        "The agent queries kitty @ ls or runs kitty_state.py",
+        "The agent does NOT steal focus"
+      ],
+      "expected_command_patterns": [
+        "(kitty @ ls|kitty_state\\.py)"
+      ],
+      "forbidden_command_patterns": [
+        "kitty @ focus-window"
+      ]
+    },
+    {
+      "id": 15,
+      "prompt": "Paste the multiline migration script into window 2 via stdin",
+      "expected_output": "Pipes or passes the script safely into window 2 using kitty @ send-text with --stdin.",
+      "files": [],
+      "expectations": [
+        "The script is passed using kitty @ send-text --stdin or pipe to window 2",
+        "The agent avoids raw multi-line unsanitized key injection"
+      ],
+      "expected_command_patterns": [
+        "kitty @ send-text.*--stdin"
+      ],
+      "forbidden_command_patterns": []
+    },
+    {
+      "id": 16,
+      "prompt": "Split a horizontal pane stacked below the current window",
+      "expected_output": "Splits a horizontal window (top/bottom stack) in Kitty.",
+      "files": [],
+      "expectations": [
+        "The agent creates a split using kitty @ launch --location=hsplit",
+        "The agent does NOT create a separate OS window"
+      ],
+      "expected_command_patterns": [
+        "kitty @ launch.*--location=hsplit"
+      ],
+      "forbidden_command_patterns": [
+        "kitty @ launch.*--type=os-window"
+      ]
+    },
+    {
+      "id": 17,
+      "prompt": "Create a new detached OS window named worker",
+      "expected_output": "Creates a new OS window named worker in Kitty.",
+      "files": [],
+      "expectations": [
+        "The agent creates an OS window using kitty @ launch --type=os-window",
+        "The agent sets title to worker"
+      ],
+      "expected_command_patterns": [
+        "kitty @ launch.*--type=os-window.*--title=worker"
+      ],
+      "forbidden_command_patterns": []
+    },
+    {
+      "id": 18,
+      "prompt": "Resume the most recent agy conversation in a new Kitty tab",
+      "expected_output": "Spawns a detached tab running agy with --continue or dispatches via dispatch_agent.py --continue.",
+      "files": [],
+      "expectations": [
+        "The agent creates a new tab with agy --continue or calls dispatch_agent.py --continue",
+        "The agent does NOT run agy --continue directly in the current subshell"
+      ],
+      "expected_command_patterns": [
+        "(kitty @ launch.*--type=tab.*agy.*--continue|dispatch_agent\\.py.*--continue)"
+      ],
+      "forbidden_command_patterns": [
+        "^agy --continue"
+      ]
+    },
+    {
+      "id": 19,
+      "prompt": "How do I rebase my branch on origin main?",
+      "expected_output": "Explains the Git rebase workflow without executing any Kitty commands.",
+      "files": [],
+      "expectations": [
+        "The agent answers the Git query directly without executing Kitty commands",
+        "The agent does NOT execute Kitty commands"
+      ],
+      "expected_command_patterns": [],
+      "forbidden_command_patterns": [
+        "kitty @"
+      ]
+    },
+    {
+      "id": 20,
+      "prompt": "Read what is in window 2 without switching focus",
+      "expected_output": "Silently reads the contents of window 2 using get-text without stealing focus.",
+      "files": [],
+      "expectations": [
+        "The agent captures the window content using kitty @ get-text --match id:2",
+        "The agent does NOT switch focus with focus-window or focus-tab"
+      ],
+      "expected_command_patterns": [
+        "kitty @ get-text.*--match (id:)?2"
+      ],
+      "forbidden_command_patterns": [
+        "kitty @ focus-window",
+        "kitty @ focus-tab"
+      ]
+    }
+  ]
+}
