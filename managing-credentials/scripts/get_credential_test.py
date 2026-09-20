@@ -77,6 +77,48 @@ class TestGetCredential(unittest.TestCase):
         val = resolve_from_bitwarden("MY_SECRET")
         self.assertEqual(val, "field_secret")
 
+    @mock.patch("shutil.which")
+    @mock.patch("subprocess.run")
+    def test_resolve_from_bitwarden_bw_notes_key_val(
+        self, mock_run: mock.MagicMock, mock_which: mock.MagicMock
+    ) -> None:
+        mock_which.side_effect = lambda cmd: (
+            "/usr/local/bin/bw" if cmd == "bw" else None
+        )
+        mock_run.side_effect = [
+            mock.MagicMock(returncode=1, stdout=""),
+            mock.MagicMock(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "notes": "OTHER_KEY=123\nSLACK_BOT_TOKEN=xoxb-notes-token\nFOO=bar"
+                    }
+                ),
+            ),
+        ]
+        val = resolve_from_bitwarden("SLACK_BOT_TOKEN", item_name="slack")
+        self.assertEqual(val, "xoxb-notes-token")
+
+    @mock.patch("shutil.which")
+    @mock.patch("subprocess.run")
+    def test_resolve_from_bitwarden_bw_notes_json(
+        self, mock_run: mock.MagicMock, mock_which: mock.MagicMock
+    ) -> None:
+        mock_which.side_effect = lambda cmd: (
+            "/usr/local/bin/bw" if cmd == "bw" else None
+        )
+        mock_run.side_effect = [
+            mock.MagicMock(returncode=1, stdout=""),
+            mock.MagicMock(
+                returncode=0,
+                stdout=json.dumps(
+                    {"notes": json.dumps({"SLACK_BOT_TOKEN": "xoxb-json-notes-token"})}
+                ),
+            ),
+        ]
+        val = resolve_from_bitwarden("SLACK_BOT_TOKEN", item_name="slack")
+        self.assertEqual(val, "xoxb-json-notes-token")
+
     @mock.patch("shutil.which", return_value="/usr/local/bin/gcloud")
     @mock.patch("subprocess.run")
     def test_resolve_from_gcp_success(

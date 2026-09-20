@@ -78,15 +78,41 @@ def resolve_from_bitwarden(
                 data = json.loads(res_item.stdout)
                 # Check login password
                 login = data.get("login", {})
-                if login.get("password"):
+                if login.get("password") and target == secret_name:
                     return str(login["password"])
+
                 # Check custom fields
                 for field in data.get("fields", []):
                     if field.get("name", "").upper() == secret_name.upper():
                         return str(field.get("value", ""))
-                # Check notes
-                if data.get("notes"):
-                    return str(data["notes"]).strip()
+
+                # Check notes (JSON, KEY=VALUE pairs, or raw string)
+                notes = data.get("notes")
+                if notes:
+                    notes_str = str(notes).strip()
+                    # A. Check if notes is valid JSON
+                    try:
+                        notes_json = json.loads(notes_str)
+                        if isinstance(notes_json, dict):
+                            for k, v in notes_json.items():
+                                if k.upper() == secret_name.upper():
+                                    return str(v)
+                    except json.JSONDecodeError:
+                        pass
+
+                    # B. Check if notes has KEY=VALUE or export KEY=VALUE lines
+                    for line in notes_str.splitlines():
+                        clean_line = line.strip()
+                        if clean_line.startswith("export "):
+                            clean_line = clean_line[7:].strip()
+                        if "=" in clean_line:
+                            k, _, v = clean_line.partition("=")
+                            if k.strip().upper() == secret_name.upper():
+                                return v.strip().strip("'\"")
+
+                    # C. If item name was exact secret name, return raw notes
+                    if target == secret_name:
+                        return notes_str
         except (subprocess.SubprocessError, json.JSONDecodeError, OSError):
             pass
 
