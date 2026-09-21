@@ -6,20 +6,26 @@
 """Unit tests for the controlling-tmux evaluation runner (run_eval.py)."""
 
 import io
+import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).parent.resolve()))
 
-from run_eval import (  # noqa: E402
+from run_eval import (
+    EVAL_SOCKET,
+    assert_sandbox_socket,
+    detect_backend,
     evaluate_commands,
     extract_commands,
     load_dataset,
     main,
     run_dry_test,
+    run_live_case,
     setup_dummy_tmux,
     teardown_dummy_tmux,
 )
@@ -255,6 +261,214 @@ class RunEvalTest(unittest.TestCase):
         main(["--case", "1"])
         self.assertIn("Eval #1", mock_stdout.getvalue())
         self.assertIn("1/1 Passed", mock_stdout.getvalue())
+
+    # --- Destructive-socket guard ---
+
+    def test_assert_sandbox_socket_allows_dedicated_socket(self) -> None:
+        """Should always permit the dedicated eval sandbox socket."""
+        self.assertIsNone(assert_sandbox_socket(EVAL_SOCKET))
+
+    @mock.patch("subprocess.run")
+    def test_assert_sandbox_socket_refuses_live_server(
+        self, mock_run: mock.MagicMock
+    ) -> None:
+        """Should refuse a non-sandbox socket that has live sessions."""
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="main: 3 windows\n", stderr=""
+        )
+        msg = assert_sandbox_socket("default")
+        self.assertIsNotNone(msg)
+        assert msg is not None
+        self.assertIn("Refusing to reset socket 'default'", msg)
+
+    @mock.patch("subprocess.run")
+    def test_assert_sandbox_socket_allows_dead_socket(
+        self, mock_run: mock.MagicMock
+    ) -> None:
+        """Should permit a non-sandbox socket with no server behind it."""
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=1, stdout="", stderr="no server running"
+        )
+        self.assertIsNone(assert_sandbox_socket("scratch-sock"))
+
+    # --- Command extraction robustness ---
+
+    def test_extract_commands_tolerates_malformed_shapes(self) -> None:
+        """Should never raise on unexpected field types in agent output."""
+        for raw in (
+            '{"type":"tool_use","name":"Bash","input":"not-a-dict"}',
+            '{"tool_calls":[{"name":"run_command","args":"oops"}]}',
+            '{"tool_calls":"not-a-list"}',
+            '{"content":"not-a-list"}',
+            '{"content":[null,7,"str"]}',
+        ):
+            with self.subTest(raw=raw):
+                self.assertEqual(extract_commands(raw), [])
+
+    def test_extract_commands_pretty_printed_object(self) -> None:
+        """Should decode a whole-document JSON object spanning several lines."""
+        raw = (
+            "{\n"
+            '  "type": "tool_use",\n'
+            '  "name": "Bash",\n'
+            '  "input": {"command": "tmux capture-pane -t %1 -p"}\n'
+            "}\n"
+        )
+        self.assertEqual(extract_commands(raw), ["tmux capture-pane -t %1 -p"])
+
+    def test_extract_commands_preserves_inner_quotes(self) -> None:
+        """Should keep quoted arguments intact so eval patterns can match them."""
+        raw = (
+            '{"type":"tool_use","name":"Bash","input":{"command":'
+            "\"tmux send-keys -t %2 'pytest tests/test_api.py' C-m\"}}"
+        )
+        cmds = extract_commands(raw)
+        self.assertEqual(cmds, ["tmux send-keys -t %2 'pytest tests/test_api.py' C-m"])
+        passed, _ = evaluate_commands(
+            cmds,
+            [r"tmux send-keys -t %2 ['\"]pytest tests/test_api\.py['\"] C-m"],
+            [],
+        )
+        self.assertTrue(passed)
+
+    def test_extract_commands_content_block(self) -> None:
+        """Should parse tool_use blocks nested in a content array."""
+        raw = (
+            '{"content":[{"type":"tool_use","name":"bash",'
+            '"input":{"command":"tmux list-windows"}}]}'
+        )
+        self.assertEqual(extract_commands(raw), ["tmux list-windows"])
+
+    def test_extract_commands_regex_fallback_unescapes(self) -> None:
+        """Should unescape the last-resort regex match rather than truncating it."""
+        raw = 'trace: "command": "tmux send-keys -t %2 \\"echo hi\\" C-m" end'
+        self.assertEqual(extract_commands(raw), ['tmux send-keys -t %2 "echo hi" C-m'])
+
+    # --- Live-case scoring ---
+
+    @mock.patch("subprocess.run")
+    def test_run_live_case_fails_on_cli_error(self, mock_run: mock.MagicMock) -> None:
+        """Should fail, not silently pass, when the CLI exits non-zero."""
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=1, stdout="", stderr="auth error"
+        )
+        case = {"prompt": "p", "forbidden_command_patterns": ["tmux"]}
+        passed, failures = run_live_case(case, "claude", "sock")
+        self.assertFalse(passed)
+        self.assertIn("exited 1", failures[0])
+
+    @mock.patch("subprocess.run")
+    def test_run_live_case_fails_on_empty_stdout(
+        self, mock_run: mock.MagicMock
+    ) -> None:
+        """Should fail when the CLI produces nothing to score."""
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="   \n", stderr=""
+        )
+        passed, failures = run_live_case({"prompt": "p"}, "claude", "sock")
+        self.assertFalse(passed)
+        self.assertIn("no stdout", failures[0])
+
+    @mock.patch("subprocess.run")
+    def test_run_live_case_uses_stream_json_for_claude(
+        self, mock_run: mock.MagicMock
+    ) -> None:
+        """Should request stream-json, the only claude format carrying tool calls."""
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="{}", stderr=""
+        )
+        run_live_case({"prompt": "p"}, "claude", "sock")
+        argv = mock_run.call_args[0][0]
+        self.assertEqual(argv[argv.index("--output-format") + 1], "stream-json")
+
+    @mock.patch("subprocess.run")
+    def test_run_live_case_detects_missing_activation(
+        self, mock_run: mock.MagicMock
+    ) -> None:
+        """Should not accept a prompt echo as proof the skill activated."""
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout='{"type":"text","text":"I would use tmux send-keys here."}',
+            stderr="",
+        )
+        case = {"prompt": "p", "expected_command_patterns": ["tmux send-keys"]}
+        passed, failures = run_live_case(case, "claude", "sock")
+        self.assertFalse(passed)
+        self.assertTrue(any("did not activate" in f for f in failures))
+
+    @mock.patch("subprocess.run")
+    def test_run_live_case_flags_false_positive(self, mock_run: mock.MagicMock) -> None:
+        """Should fail a negative prompt that nonetheless ran tmux."""
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout='{"name":"Bash","input":{"command":"tmux list-panes"}}',
+            stderr="",
+        )
+        passed, failures = run_live_case({"prompt": "p"}, "claude", "sock")
+        self.assertFalse(passed)
+        self.assertTrue(any("false-positive" in f for f in failures))
+
+    def test_run_live_case_unknown_backend(self) -> None:
+        """Should reject an unrecognised backend name."""
+        passed, failures = run_live_case({"prompt": "p"}, "gpt", "sock")
+        self.assertFalse(passed)
+        self.assertIn("Unknown backend", failures[0])
+
+    @mock.patch(
+        "subprocess.run",
+        side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=45),
+    )
+    def test_run_live_case_timeout(self, _mock_run: mock.MagicMock) -> None:
+        """Should report a timeout rather than propagating the exception."""
+        passed, failures = run_live_case({"prompt": "p"}, "claude", "sock")
+        self.assertFalse(passed)
+        self.assertIn("timed out", failures[0])
+
+    @mock.patch("subprocess.run", side_effect=FileNotFoundError())
+    def test_run_live_case_cli_missing(self, _mock_run: mock.MagicMock) -> None:
+        """Should report a missing CLI binary cleanly."""
+        passed, failures = run_live_case({"prompt": "p"}, "claude", "sock")
+        self.assertFalse(passed)
+        self.assertIn("not found in PATH", failures[0])
+
+    # --- Dataset loading and backend detection ---
+
+    def test_load_dataset_legacy_list(self) -> None:
+        """Should accept a bare list of cases as the legacy schema."""
+        path = Path(self.enterContext(tempfile.TemporaryDirectory())) / "legacy.json"
+        path.write_text(json.dumps([{"id": 1}]), encoding="utf-8")
+        skill_name, cases = load_dataset(path)
+        self.assertEqual(skill_name, "legacy")
+        self.assertEqual(len(cases), 1)
+
+    def test_load_dataset_unrecognised_schema(self) -> None:
+        """Should raise ValueError on an unrecognised top-level shape."""
+        path = Path(self.enterContext(tempfile.TemporaryDirectory())) / "bad.json"
+        path.write_text(json.dumps({"nope": True}), encoding="utf-8")
+        with self.assertRaises(ValueError):
+            load_dataset(path)
+
+    @mock.patch("shutil.which", side_effect=lambda name: name == "claude")
+    def test_detect_backend_prefers_available_cli(
+        self, _mock_which: mock.MagicMock
+    ) -> None:
+        """Should fall through to claude when agy is not installed."""
+        self.assertEqual(detect_backend(), "claude")
+
+    @mock.patch("sys.stdout", new_callable=io.StringIO)
+    @mock.patch("sys.stderr", new_callable=io.StringIO)
+    def test_main_empty_dataset_exits_one(
+        self, mock_stderr: io.StringIO, _mock_out: io.StringIO
+    ) -> None:
+        """Should exit 1 on an empty dataset rather than dividing by zero."""
+        path = Path(self.enterContext(tempfile.TemporaryDirectory())) / "empty.json"
+        path.write_text(json.dumps({"skill_name": "x", "evals": []}), encoding="utf-8")
+        with self.assertRaises(SystemExit) as cm:
+            main(["--dataset", str(path)])
+        self.assertEqual(cm.exception.code, 1)
+        self.assertIn("no eval cases", mock_stderr.getvalue())
 
 
 if __name__ == "__main__":

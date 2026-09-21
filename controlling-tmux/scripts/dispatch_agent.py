@@ -132,6 +132,9 @@ def create_api_conversation(
         cmd.append(f"--title={title}")
     if profile:
         cmd.append(f"--profile={profile}")
+    # End-of-options separator: without it a prompt beginning with "-" would be
+    # consumed by agentapi as a flag rather than as the conversation prompt.
+    cmd.append("--")
     cmd.append(prompt)
 
     code, stdout, stderr = run_command_safely(cmd, cwd=cwd)
@@ -141,16 +144,21 @@ def create_api_conversation(
 
     try:
         data = json.loads(stdout)
-        if isinstance(data, dict):
-            return str(
-                data.get("conversationId")
-                or data.get("conversation_id")
-                or data.get("id", "")
-            )
     except json.JSONDecodeError:
-        pass
+        data = None
 
-    return stdout.splitlines()[0].strip()
+    if isinstance(data, dict):
+        for key in ("conversationId", "conversation_id", "id"):
+            value = data.get(key)
+            if value:
+                return str(value)
+        sys.stderr.write(
+            "agentapi new-conversation returned JSON without a conversation ID.\n"
+        )
+        return None
+
+    first_line = stdout.splitlines()[0].strip()
+    return first_line or None
 
 
 def dispatch_to_tmux(
@@ -178,7 +186,19 @@ def dispatch_to_tmux(
 
     Returns:
         Mapping containing target identifiers (e.g. window_id, pane_id).
+
+    Raises:
+        ValueError: If the dispatch mode is unknown, or a split was requested
+            without an anchor pane (which would split whichever pane the user
+            happens to have focused).
     """
+    if dispatch_mode in ("split-h", "split-v") and not target_pane:
+        raise ValueError(
+            "Refusing to split without an anchor pane: pass --target-pane or "
+            "run inside tmux so $TMUX_PANE is set. An unanchored split would "
+            "target whichever pane the user currently has focused."
+        )
+
     effective_cwd = str(cwd.resolve()) if cwd else os.getcwd()
     base_cmd = ["tmux"]
     if socket:
@@ -197,8 +217,7 @@ def dispatch_to_tmux(
         tmux_cmd.extend(["split-window", "-h"])
         if detached:
             tmux_cmd.append("-d")
-        if target_pane:
-            tmux_cmd.extend(["-t", target_pane])
+        tmux_cmd.extend(["-t", str(target_pane)])
         tmux_cmd.extend(["-c", effective_cwd, "-P", "-F", "#{pane_id}"])
         tmux_cmd.append(command_str)
     elif dispatch_mode == "split-v":
@@ -206,8 +225,7 @@ def dispatch_to_tmux(
         tmux_cmd.extend(["split-window", "-v"])
         if detached:
             tmux_cmd.append("-d")
-        if target_pane:
-            tmux_cmd.extend(["-t", target_pane])
+        tmux_cmd.extend(["-t", str(target_pane)])
         tmux_cmd.extend(["-c", effective_cwd, "-P", "-F", "#{pane_id}"])
         tmux_cmd.append(command_str)
     else:
@@ -299,6 +317,21 @@ def parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--profile",
+        help="Execution profile passed to agentapi (--method=api only).",
+    )
+    parser.add_argument(
+        "--extra-flag",
+        dest="extra_flags",
+        action="append",
+        default=None,
+        metavar="FLAG",
+        help=(
+            "Extra argument forwarded verbatim to agy (repeatable). Use the "
+            "--extra-flag=--foo form for values that begin with a dash."
+        ),
+    )
+    parser.add_argument(
         "--target-pane",
         help="Anchor pane ID or index for split modes (defaults to $TMUX_PANE).",
     )
@@ -348,25 +381,35 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 1
 
-    title = args.title
-    if not title:
-        if args.prompt:
-            title = slugify_title(args.prompt)
-        elif args.conversation:
-            title = f"conv-{args.conversation[:8]}"
-        else:
-            title = "agy-session"
+    if args.title:
+        # Explicit titles go through the same slug filter as derived ones, so a
+        # window name can never carry newlines or terminal control characters.
+        title = slugify_title(args.title, max_length=40)
+    elif args.prompt:
+        title = slugify_title(args.prompt)
+    elif args.conversation:
+        title = slugify_title(f"conv-{args.conversation[:8]}")
+    else:
+        title = "agy-session"
 
     conv_id = args.conversation
-    if args.method == "api" and args.prompt and not conv_id and not args.dry_run:
-        conv_id = create_api_conversation(
-            prompt=args.prompt,
-            title=title,
-            model=args.model,
-            cwd=args.cwd,
-        )
-        if not conv_id:
-            return 1
+    api_pending = False
+    if args.method == "api" and args.prompt and not conv_id:
+        if args.dry_run:
+            # No conversation is created during a dry run, so stand in a
+            # placeholder rather than silently emitting a prompt-less `agy`.
+            conv_id = "<conversation-id-from-agentapi>"
+            api_pending = True
+        else:
+            conv_id = create_api_conversation(
+                prompt=args.prompt,
+                title=title,
+                model=args.model,
+                profile=args.profile,
+                cwd=args.cwd,
+            )
+            if not conv_id:
+                return 1
 
     agent_cmd = build_agent_command(
         prompt=args.prompt if args.method != "api" else None,
@@ -374,6 +417,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         agent_name=args.agent,
         model=args.model,
         continue_recent=args.continue_recent,
+        extra_flags=args.extra_flags,
     )
 
     target_pane = args.target_pane or os.environ.get("TMUX_PANE")
@@ -396,6 +440,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     output_data: dict[str, str] = dict(res)
     if conv_id:
         output_data["conversation_id"] = conv_id
+    if api_pending:
+        output_data["note"] = (
+            "Dry run: --method=api would first call `agentapi new-conversation` "
+            "and substitute the real ID for the placeholder above."
+        )
 
     if args.json or args.dry_run:
         print(json.dumps(output_data, indent=2))

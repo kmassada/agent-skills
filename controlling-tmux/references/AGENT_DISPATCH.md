@@ -39,7 +39,7 @@ window:
 
 ```bash
 # 1. Create detached window running agy with an initial prompt
-tmux new-window -d -n "refactor-db" -c "/Users/makz/src/agent-skills" \
+tmux new-window -d -n "refactor-db" -c "$PWD" \
   -P -F '#{window_id} #{pane_id}' \
   "agy -i 'Refactor SQLite models to use dataclasses'"
 ```
@@ -60,7 +60,7 @@ When you need an explicit conversation ID to track or message programmatically:
 
 ```bash
 # 1. Create a headless conversation
-CONV_ID=$(agentapi new-conversation --title="api-audit" "Audit auth endpoints")
+CONV_ID=$(agentapi new-conversation --title="api-audit" -- "Audit auth endpoints")
 
 # 2. Open a dedicated tmux window connected to the conversation
 tmux new-window -d -n "api-audit" -c "$PWD" \
@@ -72,6 +72,8 @@ Benefits:
 
 - Generates a trackable conversation ID before opening UI.
 - Allows sending follow-up messages or checking metadata via `agentapi`.
+- The `--` separator keeps a prompt that begins with `-` from being parsed as a
+  flag.
 
 ---
 
@@ -92,10 +94,12 @@ Use `split-window -v` for stacked vertical splits.
 
 ### Pattern D: Continuing Recent Session
 
-To resurrect or continue the user's most recent conversation:
+To resurrect or continue the user's most recent conversation. Use the long
+`--continue` spelling: `dispatch_agent.py` reserves `-c` for `--conversation`,
+so the short form is ambiguous across the two tools.
 
 ```bash
-tmux new-window -d -n "recent-agy" -c "$PWD" "agy -c"
+tmux new-window -d -n "recent-agy" -c "$PWD" "agy --continue"
 ```
 
 ---
@@ -109,9 +113,13 @@ tmux new-window -d -n "recent-agy" -c "$PWD" "agy -c"
 Send text directly into the running agent pane:
 
 ```bash
-# Send prompt and submit with Enter (C-m)
-tmux send-keys -t %35 'Run unit tests now' C-m
+# Send the text literally, then submit Enter as a separate key
+tmux send-keys -t %35 -l 'Run unit tests now'
+tmux send-keys -t %35 Enter
 ```
+
+Without `-l`, a payload that exactly matches a tmux key name (`Enter`, `BSpace`,
+`Escape`, `C-c`...) is interpreted as that keypress rather than typed.
 
 #### Option 2: Via `agentapi send-message` (API Level)
 
@@ -150,24 +158,26 @@ slug naming, argument escaping, and ID extraction:
 
 ```bash
 # Dispatch to new window
-python3 controlling-tmux/scripts/dispatch_agent.py \
+python3 {skill_dir}/scripts/dispatch_agent.py \
   --title="db-migrate" \
   --prompt="Apply latest Alembic migrations"
 
 # Dispatch via API method with specific model
-python3 controlling-tmux/scripts/dispatch_agent.py \
+python3 {skill_dir}/scripts/dispatch_agent.py \
   --method=api \
   --model=flash \
   --title="linter" \
   --prompt="Fix all ruff warnings in src/"
 
-# Split current window horizontally and attach conversation
-python3 controlling-tmux/scripts/dispatch_agent.py \
+# Split current window horizontally and attach conversation.
+# Split modes need an anchor: --target-pane, or $TMUX_PANE from the environment.
+python3 {skill_dir}/scripts/dispatch_agent.py \
   --conversation="d202f5d4-f6b7-4b75-bdb3-03679b8122fa" \
-  --mode=split-h
+  --mode=split-h \
+  --target-pane="$TMUX_PANE"
 
 # Dry run (prints planned tmux commands without running)
-python3 controlling-tmux/scripts/dispatch_agent.py \
+python3 {skill_dir}/scripts/dispatch_agent.py \
   --prompt="Test run" \
   --dry-run --json
 ```
@@ -176,9 +186,9 @@ python3 controlling-tmux/scripts/dispatch_agent.py \
 
 ## 5. Anti-Patterns & Safety Rules
 
-| Anti-Pattern | Risk | Correct Practice |
-| :--- | :--- | :--- |
-| **Blocking Subshell Execution** | Running `agy -i ...` in the agent's own subshell freezes the primary workflow. | Always spawn inside tmux via `tmux new-window -d` or `dispatch_agent.py`. |
-| **Focus Stealing** | Calling `select-window` or omitting `-d` pulls user cursor away from their active editor. | Always pass `-d` (detached) unless user explicitly says "open and switch to it". |
-| **Unanchored Splitting** | Splitting without `-t "$TMUX_PANE"` may target whichever window the user has active. | Always anchor splits with `-t "$TMUX_PANE"`. |
-| **Unsanitized Prompts** | Shell quotes breaking when prompt has single quotes or newlines. | Use `shlex.quote` or `dispatch_agent.py` to ensure clean escaping. |
+| Anti-Pattern                    | Risk                                                                                      | Correct Practice                                                                            |
+| :------------------------------ | :---------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------ |
+| **Blocking Subshell Execution** | Running `agy -i ...` in the agent's own subshell freezes the primary workflow.            | Always spawn inside tmux via `tmux new-window -d` or `dispatch_agent.py`.                   |
+| **Focus Stealing**              | Calling `select-window` or omitting `-d` pulls user cursor away from their active editor. | Always pass `-d` (detached) unless user explicitly says "open and switch to it".            |
+| **Unanchored Splitting**        | Splitting without `-t "$TMUX_PANE"` may target whichever window the user has active.      | Always anchor splits with `-t "$TMUX_PANE"`. `dispatch_agent.py` refuses unanchored splits. |
+| **Unsanitized Prompts**         | Shell quotes breaking when prompt has single quotes or newlines.                          | Use `shlex.quote` or `dispatch_agent.py` to ensure clean escaping.                          |

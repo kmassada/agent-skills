@@ -9,12 +9,27 @@ import argparse
 import os
 import subprocess
 import sys
-from collections.abc import Mapping, Sequence
-from typing import Any
+from collections.abc import Sequence
+from typing import TypedDict
 
 
-def get_current_pane_id(socket: str | None = None) -> str | None:
+class PaneGeometry(TypedDict):
+    """Bounding box of a single tmux pane, in terminal cell coordinates."""
+
+    id: str
+    left: int
+    top: int
+    right: int
+    bottom: int
+
+
+def get_current_pane_id(*, socket: str | None = None) -> str | None:
     """Returns the current tmux pane ID from environment or display-message.
+
+    Prefers ``$TMUX_PANE``, which is pinned to the pane this process was
+    launched from. The ``display-message`` fallback is focus-volatile: it
+    reports whichever pane the attached client has active right now, so it is
+    only a last resort when the environment variable is absent.
 
     Args:
         socket: Optional tmux socket name.
@@ -41,27 +56,39 @@ def get_current_pane_id(socket: str | None = None) -> str | None:
         return None
 
 
-def list_panes(socket: str | None = None) -> Sequence[Mapping[str, Any]]:
-    """Queries tmux layout and returns sequence of pane geometries.
+def list_panes(
+    origin_id: str | None = None,
+    *,
+    socket: str | None = None,
+) -> list[PaneGeometry]:
+    """Queries tmux layout and returns the pane geometries of one window.
+
+    Always targets ``origin_id`` explicitly. A target-less ``list-panes``
+    reports whichever window the user happens to have active, so a pane living
+    in any other window would resolve against the wrong layout.
 
     Args:
+        origin_id: Pane ID whose window should be listed. When None, tmux falls
+            back to the active window (focus-volatile; avoid where possible).
         socket: Optional tmux socket name.
 
     Returns:
-        Sequence of dictionaries with id, left, top, right, and bottom bounds.
+        List of pane geometries with id, left, top, right, and bottom bounds.
     """
     cmd = ["tmux"]
     if socket:
         cmd.extend(["-L", socket])
+    cmd.append("list-panes")
+    if origin_id:
+        cmd.extend(["-t", origin_id])
     cmd.extend(
         [
-            "list-panes",
             "-F",
             "#{pane_id} #{pane_left} #{pane_top} #{pane_right} #{pane_bottom}",
         ]
     )
     res = subprocess.run(cmd, capture_output=True, text=True, check=True)
-    panes: list[dict[str, Any]] = []
+    panes: list[PaneGeometry] = []
     for line in res.stdout.strip().splitlines():
         if not line:
             continue
@@ -69,13 +96,13 @@ def list_panes(socket: str | None = None) -> Sequence[Mapping[str, Any]]:
         if len(parts) == 5:
             try:
                 panes.append(
-                    {
-                        "id": parts[0],
-                        "left": int(parts[1]),
-                        "top": int(parts[2]),
-                        "right": int(parts[3]),
-                        "bottom": int(parts[4]),
-                    }
+                    PaneGeometry(
+                        id=parts[0],
+                        left=int(parts[1]),
+                        top=int(parts[2]),
+                        right=int(parts[3]),
+                        bottom=int(parts[4]),
+                    )
                 )
             except ValueError:
                 continue
@@ -83,21 +110,21 @@ def list_panes(socket: str | None = None) -> Sequence[Mapping[str, Any]]:
 
 
 def find_target_pane(
-    panes: Sequence[Mapping[str, Any]], origin_id: str, direction: str
+    panes: Sequence[PaneGeometry], origin_id: str, direction: str
 ) -> str | None:
     """Finds the pane ID matching the relative direction from origin pane.
 
     Args:
-        panes: Sequence of pane geometry mappings.
+        panes: Sequence of pane geometries.
         origin_id: Identifier of the starting pane (e.g. '%0').
         direction: Target direction ('left', 'right', 'above', or 'under').
 
     Returns:
         Target pane ID string or None if no adjacent pane exists in that direction.
     """
-    origin: Mapping[str, Any] | None = None
+    origin: PaneGeometry | None = None
     for p in panes:
-        if p.get("id") == origin_id:
+        if p["id"] == origin_id:
             origin = p
             break
 
@@ -105,20 +132,20 @@ def find_target_pane(
         return None
 
     candidates: list[tuple[float, str]] = []
-    origin_bottom = int(origin["bottom"])
-    origin_top = int(origin["top"])
-    origin_right = int(origin["right"])
-    origin_left = int(origin["left"])
+    origin_bottom = origin["bottom"]
+    origin_top = origin["top"]
+    origin_right = origin["right"]
+    origin_left = origin["left"]
 
     for p in panes:
-        if p.get("id") == origin_id:
+        if p["id"] == origin_id:
             continue
 
-        p_id = str(p["id"])
-        p_bottom = int(p["bottom"])
-        p_top = int(p["top"])
-        p_right = int(p["right"])
-        p_left = int(p["left"])
+        p_id = p["id"]
+        p_bottom = p["bottom"]
+        p_top = p["top"]
+        p_right = p["right"]
+        p_left = p["left"]
 
         v_overlap = max(0, min(origin_bottom, p_bottom) - max(origin_top, p_top))
         h_overlap = max(0, min(origin_right, p_right) - max(origin_left, p_left))
@@ -143,11 +170,14 @@ def find_target_pane(
     return candidates[0][1]
 
 
-def main(argv: Sequence[str] | None = None) -> None:
+def main(argv: Sequence[str] | None = None) -> int:
     """Main CLI entry point for relative pane navigation script.
 
     Args:
         argv: Optional command-line argument sequence; defaults to sys.argv[1:].
+
+    Returns:
+        Integer exit code (0 for success, non-zero for failure).
     """
     parser = argparse.ArgumentParser(
         description="Find relative tmux pane by direction."
@@ -177,18 +207,18 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     args = parser.parse_args(argv)
 
-    origin_id = args.pane or get_current_pane_id(args.socket)
+    origin_id = args.pane or get_current_pane_id(socket=args.socket)
     if not origin_id:
         print("Error: Could not determine origin pane ID.", file=sys.stderr)
-        sys.exit(1)
+        return 1
 
-    panes = list_panes(args.socket)
+    panes = list_panes(origin_id, socket=args.socket)
     target_id = find_target_pane(panes, origin_id, args.direction)
 
     if not target_id:
         msg = f"No pane found to the {args.direction} of {origin_id}."
         print(msg, file=sys.stderr)
-        sys.exit(1)
+        return 1
 
     print(target_id)
     if args.select:
@@ -198,6 +228,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         select_cmd.extend(["select-pane", "-t", target_id])
         subprocess.run(select_cmd, check=True)
 
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -7,10 +7,14 @@
 
 import io
 import json
+import sys
 import unittest
 from collections.abc import Sequence
 from pathlib import Path
 from unittest import mock
+
+# Ensure script directory is on sys.path for direct or module execution
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from dispatch_agent import (
     build_agent_command,
@@ -300,6 +304,182 @@ class TestDispatchAgent(unittest.TestCase):
         """Should output dry run JSON cleanly."""
         code = main(["--prompt", "Run build", "--dry-run", "--json"])
         self.assertEqual(code, 0)
+
+    # --- Conversation-ID parsing contract ---
+
+    @mock.patch("sys.stderr", new_callable=io.StringIO)
+    @mock.patch("dispatch_agent.run_command_safely")
+    def test_create_api_conversation_json_without_id_returns_none(
+        self, mock_run: mock.MagicMock, _mock_err: io.StringIO
+    ) -> None:
+        """Should return None, not an empty string, for JSON lacking an ID key."""
+        mock_run.return_value = (0, json.dumps({"convo": "abc-123"}), "")
+        self.assertIsNone(create_api_conversation("Start conversation"))
+
+    @mock.patch("dispatch_agent.run_command_safely")
+    def test_create_api_conversation_snake_case_key(
+        self, mock_run: mock.MagicMock
+    ) -> None:
+        """Should accept the snake_case conversation_id spelling."""
+        mock_run.return_value = (0, json.dumps({"conversation_id": "c-77"}), "")
+        self.assertEqual(create_api_conversation("Start"), "c-77")
+
+    @mock.patch("dispatch_agent.run_command_safely")
+    def test_create_api_conversation_ends_options_before_prompt(
+        self, mock_run: mock.MagicMock
+    ) -> None:
+        """Should pass -- so a prompt starting with '-' is not read as a flag."""
+        mock_run.return_value = (0, "c-1", "")
+        create_api_conversation("--profile=/etc/passwd")
+        argv = list(mock_run.call_args[0][0])
+        self.assertEqual(argv[-2:], ["--", "--profile=/etc/passwd"])
+
+    @mock.patch("dispatch_agent.run_command_safely")
+    def test_create_api_conversation_forwards_profile(
+        self, mock_run: mock.MagicMock
+    ) -> None:
+        """Should forward the profile flag to agentapi."""
+        mock_run.return_value = (0, "c-1", "")
+        create_api_conversation("Start", profile="sandbox")
+        self.assertIn("--profile=sandbox", mock_run.call_args[0][0])
+
+    def test_run_command_safely_honours_cwd(self) -> None:
+        """Should execute the subprocess in the requested working directory."""
+        code, stdout, _ = run_command_safely(["pwd"], cwd=Path("/"))
+        self.assertEqual(code, 0)
+        self.assertEqual(stdout, "/")
+
+    # --- Split anchoring (focus safety) ---
+
+    def test_dispatch_to_tmux_split_requires_anchor(self) -> None:
+        """Should refuse to split without an anchor rather than hit focused pane."""
+        for mode in ("split-h", "split-v"):
+            with self.subTest(mode=mode), self.assertRaises(ValueError) as ctx:
+                dispatch_to_tmux(
+                    command_str="agy",
+                    title="test",
+                    dispatch_mode=mode,
+                    target_pane=None,
+                    dry_run=True,
+                )
+            self.assertIn("anchor pane", str(ctx.exception))
+
+    def test_dispatch_to_tmux_split_includes_target_flag(self) -> None:
+        """Should anchor the split to the supplied pane with -t."""
+        res = dispatch_to_tmux(
+            command_str="agy",
+            title="test",
+            dispatch_mode="split-h",
+            target_pane="%10",
+            dry_run=True,
+        )
+        self.assertIn("-t %10", res["command"])
+
+    @mock.patch.dict("os.environ", {}, clear=True)
+    @mock.patch("sys.stderr", new_callable=io.StringIO)
+    def test_main_split_without_tmux_pane_exits_one(
+        self, mock_err: io.StringIO
+    ) -> None:
+        """Should fail cleanly when a split is asked for outside tmux."""
+        code = main(["--prompt", "Task", "--mode", "split-h", "--dry-run"])
+        self.assertEqual(code, 1)
+        self.assertIn("anchor pane", mock_err.getvalue())
+
+    # --- Window-title sanitisation ---
+
+    @mock.patch("sys.stdout", new_callable=io.StringIO)
+    def test_main_sanitises_explicit_title(self, mock_out: io.StringIO) -> None:
+        """Should slug an explicit --title so control characters cannot reach tmux."""
+        main(
+            ["--prompt", "hi", "--title", "evil; rm -rf ~\nbad", "--dry-run", "--json"]
+        )
+        planned = json.loads(mock_out.getvalue())["command"]
+        self.assertNotIn(";", planned.split("-c ")[0])
+        self.assertNotIn("\n", planned.split("-c ")[0])
+
+    @mock.patch("sys.stdout", new_callable=io.StringIO)
+    def test_main_derives_title_from_conversation(self, mock_out: io.StringIO) -> None:
+        """Should derive a slugged window title from the conversation ID."""
+        main(["--conversation", "d202f5d4-f6b7-4b75", "--dry-run", "--json"])
+        self.assertIn("conv-d202f5d4", mock_out.getvalue())
+
+    # --- Dry-run fidelity ---
+
+    @mock.patch("sys.stdout", new_callable=io.StringIO)
+    @mock.patch("dispatch_agent.create_api_conversation")
+    def test_main_dry_run_api_does_not_call_agentapi(
+        self, mock_create: mock.MagicMock, mock_out: io.StringIO
+    ) -> None:
+        """Should show a placeholder conversation instead of a prompt-less agy."""
+        code = main(["--prompt", "Audit", "--method", "api", "--dry-run", "--json"])
+        self.assertEqual(code, 0)
+        mock_create.assert_not_called()
+        payload = json.loads(mock_out.getvalue())
+        self.assertIn("--conversation", payload["inner_command"])
+        self.assertIn("note", payload)
+
+    @mock.patch("sys.stdout", new_callable=io.StringIO)
+    @mock.patch("dispatch_agent.dispatch_to_tmux")
+    @mock.patch("dispatch_agent.create_api_conversation", return_value="c-501")
+    def test_main_api_method_creates_conversation(
+        self,
+        mock_create: mock.MagicMock,
+        mock_dispatch: mock.MagicMock,
+        _mock_out: io.StringIO,
+    ) -> None:
+        """Should create a conversation then launch agy against it."""
+        mock_dispatch.return_value = {"status": "created", "pane_id": "%9"}
+        code = main(["--prompt", "Audit", "--method", "api", "--json"])
+        self.assertEqual(code, 0)
+        mock_create.assert_called_once()
+        self.assertIn(
+            "--conversation c-501", mock_dispatch.call_args.kwargs["command_str"]
+        )
+
+    @mock.patch("sys.stderr", new_callable=io.StringIO)
+    @mock.patch("dispatch_agent.create_api_conversation", return_value=None)
+    def test_main_api_method_failure_exits_one(
+        self, _mock_create: mock.MagicMock, _mock_err: io.StringIO
+    ) -> None:
+        """Should exit 1 when the conversation cannot be created."""
+        self.assertEqual(main(["--prompt", "Audit", "--method", "api"]), 1)
+
+    @mock.patch("sys.stderr", new_callable=io.StringIO)
+    @mock.patch(
+        "dispatch_agent.dispatch_to_tmux", side_effect=RuntimeError("no server")
+    )
+    def test_main_dispatch_failure_exits_one(
+        self, _mock_dispatch: mock.MagicMock, mock_err: io.StringIO
+    ) -> None:
+        """Should report dispatch failures and exit 1 rather than raising."""
+        self.assertEqual(main(["--prompt", "Task"]), 1)
+        self.assertIn("Dispatch error", mock_err.getvalue())
+
+    # --- Previously unreachable CLI surface ---
+
+    @mock.patch("sys.stdout", new_callable=io.StringIO)
+    def test_main_extra_flags_reach_agy(self, mock_out: io.StringIO) -> None:
+        """Should forward repeated --extra-flag values into the agy command."""
+        main(
+            [
+                "--prompt",
+                "Task",
+                "--extra-flag=--add-dir",
+                "--extra-flag=/tmp/project",
+                "--dry-run",
+                "--json",
+            ]
+        )
+        inner = json.loads(mock_out.getvalue())["inner_command"]
+        self.assertIn("--add-dir /tmp/project", inner)
+
+    def test_parse_arguments_profile_and_extra_flags(self) -> None:
+        """Should expose profile and extra-flag on the CLI."""
+        args = parse_arguments(
+            ["--prompt", "Hi", "--profile", "sandbox", "--extra-flag=-x"]
+        )
+        self.assertEqual(args.profile, "sandbox")
+        self.assertEqual(args.extra_flags, ["-x"])
 
 
 if __name__ == "__main__":

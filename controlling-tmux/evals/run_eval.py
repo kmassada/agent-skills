@@ -39,6 +39,38 @@ class TermColor:
     RESET = "\033[0m"
 
 
+def assert_sandbox_socket(socket_name: str) -> str | None:
+    """Refuses to operate on a tmux socket that is not a disposable sandbox.
+
+    ``setup_dummy_tmux`` opens with ``kill-server``, so an unguarded
+    ``--socket`` would let a typo (``--socket default``) destroy the user's real
+    tmux server and every session in it.
+
+    Args:
+        socket_name: Socket identifier supplied on the command line.
+
+    Returns:
+        An error message when the socket is unsafe to reset, else None.
+    """
+    if socket_name == EVAL_SOCKET:
+        return None
+
+    probe = subprocess.run(
+        ["tmux", "-L", socket_name, "list-sessions"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if probe.returncode == 0 and probe.stdout.strip():
+        sessions = probe.stdout.strip().splitlines()
+        return (
+            f"Refusing to reset socket '{socket_name}': it has "
+            f"{len(sessions)} live session(s) and is not the dedicated eval "
+            f"sandbox ('{EVAL_SOCKET}'). Running here would kill that server."
+        )
+    return None
+
+
 def setup_dummy_tmux(socket_name: str) -> tuple[bool, str]:
     """Creates an isolated dummy tmux session with predefined panes for testing.
 
@@ -139,6 +171,76 @@ def evaluate_commands(
     return len(failures) == 0, failures
 
 
+_COMMAND_TOOLS = frozenset({"bash", "execute_command", "run_command"})
+
+
+def _tool_name(node: Mapping[str, Any]) -> str:
+    """Returns a node's lowercased tool name, tolerating non-string values.
+
+    Args:
+        node: Decoded JSON object from agent output.
+
+    Returns:
+        Lowercased tool name, or an empty string when absent or not a string.
+    """
+    name = node.get("name")
+    return name.lower() if isinstance(name, str) else ""
+
+
+def _append_command(sink: list[str], payload: Any) -> None:
+    """Appends the command string from a tool-input payload, if there is one.
+
+    Args:
+        sink: List accumulating extracted command strings.
+        payload: Candidate tool-input object; ignored unless it is a mapping
+            carrying a string command under a recognised key.
+    """
+    if not isinstance(payload, Mapping):
+        return
+    for key in ("command", "CommandLine", "cmd"):
+        value = payload.get(key)
+        if isinstance(value, str) and value:
+            sink.append(value)
+            return
+
+
+def _iter_json_objects(raw_output: str) -> list[dict[str, Any]]:
+    """Decodes agent output as JSONL, falling back to one whole-text object.
+
+    ``--output-format stream-json`` emits one JSON object per line, while
+    ``--output-format json`` emits a single pretty-printed object spanning many
+    lines; the latter decodes only when the whole text is parsed at once.
+
+    Args:
+        raw_output: Full text output from an agent CLI run.
+
+    Returns:
+        List of decoded JSON objects, ignoring anything that is not an object.
+    """
+    nodes: list[dict[str, Any]] = []
+    for raw_line in raw_output.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, dict):
+            nodes.append(data)
+
+    if not nodes:
+        try:
+            whole = json.loads(raw_output)
+        except json.JSONDecodeError:
+            return nodes
+        if isinstance(whole, dict):
+            nodes.append(whole)
+        elif isinstance(whole, list):
+            nodes.extend(x for x in whole if isinstance(x, dict))
+    return nodes
+
+
 def extract_commands(raw_output: str) -> list[str]:
     """Extracts bash commands across both Antigravity (agy) and Claude schemas.
 
@@ -150,52 +252,40 @@ def extract_commands(raw_output: str) -> list[str]:
     """
     executed_commands: list[str] = []
 
-    for raw_line in raw_output.splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        try:
-            data = json.loads(line)
-            if isinstance(data, dict):
-                # 1. Antigravity format: tool_calls -> run_command -> args.CommandLine
-                for tc in data.get("tool_calls", []):
-                    if tc.get("name") == "run_command":
-                        cmd = tc.get("args", {}).get("CommandLine", "")
-                        if cmd:
-                            executed_commands.append(cmd)
+    for node in _iter_json_objects(raw_output):
+        # 1. Antigravity format: tool_calls -> run_command -> args.CommandLine
+        tool_calls = node.get("tool_calls")
+        if isinstance(tool_calls, list):
+            for tc in tool_calls:
+                if isinstance(tc, dict) and tc.get("name") == "run_command":
+                    _append_command(executed_commands, tc.get("args"))
 
-                # 2. Claude format: type="tool_use", name="Bash" / "bash"
-                if data.get("type") == "tool_use" or "name" in data:
-                    name = data.get("name", "").lower()
-                    if name in ("bash", "execute_command", "run_command"):
-                        inp = data.get("input") or data.get("args") or {}
-                        cmd = (
-                            inp.get("command")
-                            or inp.get("CommandLine")
-                            or inp.get("cmd")
-                        )
-                        if cmd:
-                            executed_commands.append(cmd)
+        # 2. Claude format: type="tool_use", name="Bash" / "bash"
+        if _tool_name(node) in _COMMAND_TOOLS:
+            _append_command(executed_commands, node.get("input") or node.get("args"))
 
-                # 3. Claude content blocks with tool_use
-                for block in data.get("content", []):
-                    if isinstance(block, dict) and block.get("type") == "tool_use":
-                        if block.get("name", "").lower() in (
-                            "bash",
-                            "execute_command",
-                        ):
-                            cmd = block.get("input", {}).get("command")
-                            if cmd:
-                                executed_commands.append(cmd)
-        except json.JSONDecodeError:
-            pass
+        # 3. Claude content blocks with tool_use
+        content = node.get("content")
+        if isinstance(content, list):
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") == "tool_use":
+                    if _tool_name(block) in _COMMAND_TOOLS:
+                        _append_command(executed_commands, block.get("input"))
 
     if not executed_commands:
-        cmd_line_matches = re.findall(
-            r"(?:CommandLine|command|bash)['\"]?\s*[:=]\s*['\"]([^'\"]+)['\"]",
+        # Last resort for unrecognised output shapes. Consumes backslash escapes
+        # so an embedded quote (`send-keys -t %2 'pytest' C-m`) does not
+        # truncate the command at its first inner quote.
+        for raw in re.findall(
+            r'"(?:CommandLine|command|cmd)"\s*:\s*"((?:[^"\\]|\\.)*)"',
             raw_output,
-        )
-        executed_commands.extend(cmd_line_matches)
+        ):
+            try:
+                executed_commands.append(json.loads(f'"{raw}"'))
+            except json.JSONDecodeError:
+                executed_commands.append(raw)
 
     return executed_commands
 
@@ -222,7 +312,17 @@ def run_live_case(
     if backend == "agy":
         cmd = ["agy", "-p", prompt, "--output-format", "json", "--effort", "low"]
     elif backend == "claude":
-        cmd = ["claude", "-p", prompt, "--output-format", "json"]
+        # `--output-format json` returns only the final result object, which
+        # carries no tool-call records; stream-json emits one event per tool use,
+        # which is the only shape this harness can score.
+        cmd = [
+            "claude",
+            "-p",
+            prompt,
+            "--output-format",
+            "stream-json",
+            "--verbose",
+        ]
     else:
         return False, [f"Unknown backend: {backend}"]
 
@@ -246,17 +346,27 @@ def run_live_case(
         return False, [f"CLI executable '{cmd[0]}' not found in PATH."]
 
     raw_output = proc.stdout
+    failures: list[str] = []
+
+    # A crashed CLI produces no tool records, which would otherwise let every
+    # negative case "pass" without the agent ever having run.
+    if proc.returncode != 0:
+        detail = proc.stderr.strip().splitlines()
+        tail = detail[-1] if detail else "no stderr"
+        return False, [f"CLI '{cmd[0]}' exited {proc.returncode}: {tail}"]
+    if not raw_output.strip():
+        return False, [f"CLI '{cmd[0]}' produced no stdout to score."]
+
     executed_commands = extract_commands(raw_output)
 
-    skill_referenced = "tmux" in raw_output.lower() or any(
-        "tmux" in c.lower() for c in executed_commands
-    )
-
-    failures: list[str] = []
     should_activate = bool(case.get("expected_command_patterns"))
-    if should_activate and not skill_referenced:
-        failures.append("Skill did not activate for expected positive trigger prompt.")
-    elif not should_activate and any("tmux" in c for c in executed_commands):
+    ran_tmux = any("tmux" in c.lower() for c in executed_commands)
+    if should_activate and not ran_tmux:
+        failures.append(
+            "Skill did not activate: no tmux command was executed for a "
+            f"positive trigger prompt (parsed {len(executed_commands)} command(s))."
+        )
+    elif not should_activate and ran_tmux:
         failures.append(
             "Skill false-positive: tmux commands executed for negative prompt."
         )
@@ -423,6 +533,10 @@ def main(argv: Sequence[str] | None = None) -> None:
     print(f"Loaded:  {len(cases)} test cases\n")
 
     if args.live:
+        unsafe = assert_sandbox_socket(args.socket)
+        if unsafe:
+            print(f"{TermColor.RED}{unsafe}{TermColor.RESET}", file=sys.stderr)
+            sys.exit(1)
         ok, err = setup_dummy_tmux(args.socket)
         if not ok:
             print(
@@ -470,6 +584,13 @@ def main(argv: Sequence[str] | None = None) -> None:
         if args.live:
             teardown_dummy_tmux(args.socket)
             print(f"Sandbox tmux server {args.socket} cleanly terminated.")
+
+    if total_count == 0:
+        print(
+            f"{TermColor.RED}Dataset contains no eval cases.{TermColor.RESET}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     print("--------------------------------------------------")
     score_color = TermColor.GREEN if passed_count == total_count else TermColor.RED

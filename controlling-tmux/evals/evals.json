@@ -7,12 +7,12 @@
       "expected_output": "Dispatches pytest tests/test_api.py to tmux pane %2 without executing it in the local shell.",
       "files": [],
       "expectations": [
-        "The command is sent to pane %2 using tmux send-keys with C-m",
+        "The command is sent to pane %2 using tmux send-keys (literal -l plus Enter, or the legacy quoted form with C-m)",
         "pytest tests/test_api.py is NOT executed directly in the agent's own subshell",
         "The agent does NOT steal user focus with select-pane"
       ],
       "expected_command_patterns": [
-        "tmux send-keys -t %2 ['\"]pytest tests/test_api\\.py['\"] C-m"
+        "tmux send-keys\\b(?=.*-t %2)(?=.*pytest tests/test_api\\.py)"
       ],
       "forbidden_command_patterns": [
         "^pytest tests/test_api\\.py"
@@ -24,11 +24,11 @@
       "expected_output": "Sends cargo build --release to tmux pane %3 without running it locally.",
       "files": [],
       "expectations": [
-        "The command is sent to pane %3 using tmux send-keys with C-m",
+        "The command is sent to pane %3 using tmux send-keys (literal -l plus Enter, or the legacy quoted form with C-m)",
         "cargo build is NOT executed directly in the agent's own subshell"
       ],
       "expected_command_patterns": [
-        "tmux send-keys -t %3 ['\"]cargo build --release['\"] C-m"
+        "tmux send-keys\\b(?=.*-t %3)(?=.*cargo build --release)"
       ],
       "forbidden_command_patterns": [
         "^cargo build --release"
@@ -44,7 +44,7 @@
         "The agent does NOT call select-pane or select-window to steal focus"
       ],
       "expected_command_patterns": [
-        "tmux capture-pane -t %1 -p"
+        "tmux capture-pane\\b(?=.*-t %1)(?=.*-p)"
       ],
       "forbidden_command_patterns": [
         "tmux select-pane",
@@ -61,7 +61,7 @@
         "The agent does NOT call select-pane"
       ],
       "expected_command_patterns": [
-        "tmux capture-pane -t %2 -p -S -50"
+        "tmux capture-pane\\b(?=.*-t %2)(?=.*-S -(?:[5-9]\\d|\\d{3,}))"
       ],
       "forbidden_command_patterns": [
         "tmux select-pane"
@@ -91,7 +91,7 @@
         "The agent does NOT create an entirely new window"
       ],
       "expected_command_patterns": [
-        "tmux split-window -h.*-P -F ['\"]#\\{pane_id\\}['\"]"
+        "tmux split-window\\b(?=.*-h)(?=.*-P)(?=.*#\\{pane_id\\})"
       ],
       "forbidden_command_patterns": [
         "tmux new-window"
@@ -108,7 +108,7 @@
         "The agent does NOT split an existing pane"
       ],
       "expected_command_patterns": [
-        "tmux new-window.*-n server.*-P -F ['\"]#\\{window_id\\}['\"]"
+        "tmux new-window\\b(?=.*-n server)(?=.*-P)(?=.*#\\{window_id\\})"
       ],
       "forbidden_command_patterns": [
         "tmux split-window"
@@ -125,7 +125,7 @@
         "The agent does NOT switch focus with select-pane unless requested"
       ],
       "expected_command_patterns": [
-        "relative_pane\\.py --direction=right",
+        "relative_pane\\.py\\b(?=.*--direction[= ]right)",
         "tmux capture-pane"
       ],
       "forbidden_command_patterns": [
@@ -198,7 +198,7 @@
       ],
       "expected_command_patterns": [
         "tmux display-message.*#\\{pane_in_mode\\}",
-        "tmux copy-mode -q -t %1"
+        "tmux copy-mode\\b(?=.*-q)(?=.*-t %1)"
       ],
       "forbidden_command_patterns": []
     },
@@ -226,14 +226,14 @@
       "expectations": [
         "The multiline content is loaded into a tmux buffer using tmux load-buffer",
         "The buffer is pasted into pane %2 using tmux paste-buffer -t %2",
-        "The agent does NOT send raw multiline commands via tmux send-keys"
+        "The agent does NOT type the multiline body through send-keys (a trailing send-keys Enter to submit is fine)"
       ],
       "expected_command_patterns": [
         "tmux load-buffer",
         "tmux paste-buffer -t %2"
       ],
       "forbidden_command_patterns": [
-        "tmux send-keys"
+        "tmux send-keys\\b(?!(?:\\s+-t\\s+\\S+)*\\s+(?:Enter|C-m)\\s*$)"
       ]
     },
     {
@@ -247,7 +247,7 @@
         "The agent does NOT create a separate new window"
       ],
       "expected_command_patterns": [
-        "tmux split-window -f -v.*-P -F ['\"]#\\{pane_id\\}['\"]"
+        "tmux split-window\\b(?=.*-f)(?=.*-v)(?=.*-P)(?=.*#\\{pane_id\\})"
       ],
       "forbidden_command_patterns": [
         "tmux new-window"
@@ -263,7 +263,7 @@
         "The agent does NOT switch into the session or disrupt the current window"
       ],
       "expected_command_patterns": [
-        "tmux new-session -d -s worker"
+        "tmux new-session\\b(?=.*-d)(?=.*-s worker)"
       ],
       "forbidden_command_patterns": [
         "tmux new-window"
@@ -309,7 +309,7 @@
         "The agent does NOT switch focus with select-pane or select-window"
       ],
       "expected_command_patterns": [
-        "tmux capture-pane -t %2 -p"
+        "tmux capture-pane\\b(?=.*-t %2)(?=.*-p)"
       ],
       "forbidden_command_patterns": [
         "tmux select-pane",
