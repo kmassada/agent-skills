@@ -84,6 +84,8 @@ def resolve_from_bitwarden(
             candidates = [target]
             if "SLACK" in secret_name.upper():
                 candidates.extend(["slack_agents", "slack"])
+            if any(k in secret_name.upper() for k in ("WORKSPACE", "GWS", "GOOGLE")):
+                candidates.extend(["gws_auth", "google_workspace", "gws"])
             if item_name:
                 candidates.insert(0, item_name)
 
@@ -102,10 +104,17 @@ def resolve_from_bitwarden(
                             val_json = json.loads(sec_val)
                             if isinstance(val_json, dict):
                                 # Check exact or normalized keys
+                                clean_name = (
+                                    secret_name.lower()
+                                    .replace("slack_", "")
+                                    .replace("google_workspace_", "")
+                                    .replace("cli_", "")
+                                )
                                 norm_keys = [
                                     secret_name.upper(),
                                     secret_name.lower(),
-                                    secret_name.lower().replace("slack_", ""),
+                                    clean_name.upper(),
+                                    clean_name.lower(),
                                 ]
                                 for k, v in val_json.items():
                                     if k.upper() in norm_keys or k.lower() in norm_keys:
