@@ -1138,8 +1138,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     sync_parser.add_argument(
         "--keys",
-        required=True,
-        help="Comma-separated list of secret keys to fetch and sync",
+        help="Optional comma-separated list of keys (defaults to all project secrets)",
     )
     sync_parser.add_argument(
         "--upstream",
@@ -1256,7 +1255,38 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_command_with_injected_secrets(target_cmd, resolved)
 
     if args.command == "sync":
-        keys = [k.strip() for k in args.keys.split(",") if k.strip()]
+        if args.keys:
+            keys = [k.strip() for k in args.keys.split(",") if k.strip()]
+        elif args.upstream == "bitwarden":
+            _load_bw_key_file()
+            proj = args.project or os.environ.get("BWS_PROJECT_ID")
+            if not proj:
+                print(
+                    "Error: BWS_PROJECT_ID required to auto-discover keys.",
+                    file=sys.stderr,
+                )
+                return 1
+            res = subprocess.run(
+                ["bws", "secret", "list", proj],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if res.returncode != 0:
+                print(
+                    "Error: Failed to list secrets from Bitwarden.",
+                    file=sys.stderr,
+                )
+                return 1
+            items = json.loads(res.stdout)
+            keys = [it["key"] for it in items if "key" in it]
+        else:
+            print(
+                "Error: --keys is required for the specified upstream provider.",
+                file=sys.stderr,
+            )
+            return 1
+
         doppler_payload: dict[str, str] = {}
         for key in keys:
             target_var = key
