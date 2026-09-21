@@ -351,6 +351,104 @@ def resolve_secret(
     return None
 
 
+def resolve_all_secrets(
+    provider: str = "bitwarden",
+    project_id: str | None = None,
+) -> Mapping[str, str]:
+    """Resolves and flattens all secrets from a vault into environment variables.
+
+    Args:
+        provider: Target vault provider ('bitwarden', 'gcp', 'doppler').
+        project_id: Optional project identifier.
+
+    Returns:
+        Mapping of environment variable names to secret values.
+    """
+    injected: dict[str, str] = {}
+    if provider == "bitwarden":
+        _load_bw_key_file()
+        if not shutil.which("bws") or not os.environ.get("BWS_ACCESS_TOKEN"):
+            return injected
+        proj = project_id or os.environ.get("BWS_PROJECT_ID")
+        if not proj:
+            return injected
+
+        list_res = subprocess.run(
+            ["bws", "secret", "list", proj],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if list_res.returncode != 0 or not list_res.stdout.strip():
+            return injected
+
+        try:
+            secrets_list = json.loads(list_res.stdout)
+            if not isinstance(secrets_list, list):
+                return injected
+            for s in secrets_list:
+                if not isinstance(s, dict) or "id" not in s:
+                    continue
+                sec_id = s["id"]
+                sec_key = s.get("key", "")
+                get_res = subprocess.run(
+                    ["bws", "secret", "get", sec_id],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if get_res.returncode == 0 and get_res.stdout.strip():
+                    item_data = json.loads(get_res.stdout)
+                    val = item_data.get("value", "")
+                    if not val:
+                        continue
+                    try:
+                        parsed_json = json.loads(val)
+                        if isinstance(parsed_json, dict):
+                            # Map standard integrations to well-known env vars
+                            service = parsed_json.get("service", "").lower()
+                            if service == "slack" or "bot_token" in parsed_json:
+                                if "bot_token" in parsed_json:
+                                    injected["SLACK_BOT_TOKEN"] = str(
+                                        parsed_json["bot_token"]
+                                    )
+                                if "team_id" in parsed_json:
+                                    injected["SLACK_TEAM_ID"] = str(
+                                        parsed_json["team_id"]
+                                    )
+                            elif (
+                                service == "google_workspace"
+                                or "client_secret" in parsed_json
+                            ):
+                                if "project_id" in parsed_json:
+                                    injected["GOOGLE_WORKSPACE_PROJECT_ID"] = str(
+                                        parsed_json["project_id"]
+                                    )
+                                if "client_id" in parsed_json:
+                                    injected["GOOGLE_WORKSPACE_CLI_CLIENT_ID"] = str(
+                                        parsed_json["client_id"]
+                                    )
+                                if "client_secret" in parsed_json:
+                                    injected["GOOGLE_WORKSPACE_CLI_CLIENT_SECRET"] = (
+                                        str(parsed_json["client_secret"])
+                                    )
+
+                            # General prefix exports
+                            prefix = f"{sec_key.upper()}_"
+                            for k, v in parsed_json.items():
+                                injected[f"{prefix}{k.upper()}"] = str(v)
+                                if k.upper() not in injected:
+                                    injected[k.upper()] = str(v)
+                        else:
+                            injected[sec_key.upper()] = str(val)
+                    except json.JSONDecodeError:
+                        injected[sec_key.upper()] = str(val)
+        except json.JSONDecodeError:
+            pass
+
+    return injected
+
+
 def sync_to_doppler(
     secrets: Mapping[str, str],
     project: str | None = None,
@@ -671,8 +769,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     run_parser.add_argument(
         "--keys",
-        required=True,
-        help="Comma-separated list of secret keys to resolve",
+        help="Optional comma-separated secret keys (default: all project secrets)",
     )
     run_parser.add_argument(
         "--provider",
@@ -750,17 +847,31 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("Error: No command specified to run.", file=sys.stderr)
             return 1
 
-        keys = [k.strip() for k in args.keys.split(",") if k.strip()]
-        resolved: dict[str, str] = {}
-        for key in keys:
-            val = resolve_secret(key, provider=args.provider, project_id=args.project)
-            if val is not None:
-                resolved[key] = val
-            else:
-                print(
-                    f"Warning: Could not resolve '{key}'.",
-                    file=sys.stderr,
+        if args.keys:
+            keys = [k.strip() for k in args.keys.split(",") if k.strip()]
+            resolved: dict[str, str] = {}
+            for key in keys:
+                target_var = key
+                source_key = key
+                if ":" in key:
+                    target_var, _, source_key = key.partition(":")
+                val = resolve_secret(
+                    source_key, provider=args.provider, project_id=args.project
                 )
+                if val is not None:
+                    resolved[target_var] = val
+                else:
+                    print(
+                        f"Warning: Could not resolve '{source_key}'.",
+                        file=sys.stderr,
+                    )
+        else:
+            resolved = dict(
+                resolve_all_secrets(
+                    provider=args.provider or "bitwarden",
+                    project_id=args.project,
+                )
+            )
 
         return run_command_with_injected_secrets(target_cmd, resolved)
 

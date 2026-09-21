@@ -172,24 +172,24 @@ python3 scripts/get_credential.py sync \
 
 ## 6. Injecting Credentials at Runtime
 
-Inject secrets into process memory at execution time rather than writing
-unencrypted `.env` files to disk.
+Inject secrets directly into process memory at execution time with zero disk
+plaintext files:
 
-### Running Local Scripts and Commands
+### Running with Bitwarden In-Memory Injection (Zero SaaS / 100% Local)
 
-Use `doppler run -- <command>` to inject all secrets as environment variables:
+Run any agent or script with all project credentials resolved in memory:
 
 ```bash
-doppler run -- python3 scripts/my_agent_task.py
+# Automatically resolves and injects ALL project secrets into child process
+python3 scripts/get_credential.py run -- agy
+
+# Run a specific script
+python3 scripts/get_credential.py run -- python3 my_script.py
 ```
 
-### Running Agents with MCP Servers
+### Running with Doppler (Optional Cloud / Team Workflow)
 
-Keep MCP server definitions in `mcp_config.json` clean, portable, and free of
-credential wiring. Do not hardcode environment blocks or wrap individual MCP
-server commands with Doppler in the JSON definition.
-
-Instead, launch the agent session via `doppler run`:
+If using Doppler, launch commands via `doppler run`:
 
 ```bash
 doppler run -- agy

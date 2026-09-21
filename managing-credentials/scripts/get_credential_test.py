@@ -16,6 +16,7 @@ from unittest import mock
 
 from get_credential import (
     main,
+    resolve_all_secrets,
     resolve_from_bitwarden,
     resolve_from_doppler,
     resolve_from_gcp,
@@ -388,6 +389,74 @@ class TestGetCredential(unittest.TestCase):
             "gws_auth.client_id", provider="bitwarden", project_id=None
         )
         mock_sync.assert_called_once_with({"MY_CUSTOM_VAR": "my_val"}, project=None)
+
+    @mock.patch("shutil.which", return_value="/usr/local/bin/bws")
+    @mock.patch.dict(
+        os.environ, {"BWS_ACCESS_TOKEN": "token", "BWS_PROJECT_ID": "proj-1"}
+    )
+    @mock.patch("subprocess.run")
+    def test_resolve_all_secrets_bws(
+        self, mock_run: mock.MagicMock, mock_which: mock.MagicMock
+    ) -> None:
+        mock_run.side_effect = [
+            mock.MagicMock(
+                returncode=0,
+                stdout=json.dumps(
+                    [
+                        {"id": "id-1", "key": "slack_agents"},
+                        {"id": "id-2", "key": "gws_auth"},
+                    ]
+                ),
+            ),
+            mock.MagicMock(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "value": json.dumps(
+                            {
+                                "service": "slack",
+                                "bot_token": "xoxb-999",
+                                "team_id": "T999",
+                            }
+                        )
+                    }
+                ),
+            ),
+            mock.MagicMock(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "value": json.dumps(
+                            {
+                                "service": "google_workspace",
+                                "project_id": "kmassada-gws",
+                                "client_id": "client-123",
+                                "client_secret": "secret-123",
+                            }
+                        )
+                    }
+                ),
+            ),
+        ]
+        res = resolve_all_secrets(provider="bitwarden")
+        self.assertEqual(res["SLACK_BOT_TOKEN"], "xoxb-999")
+        self.assertEqual(res["SLACK_TEAM_ID"], "T999")
+        self.assertEqual(res["GOOGLE_WORKSPACE_PROJECT_ID"], "kmassada-gws")
+        self.assertEqual(res["GOOGLE_WORKSPACE_CLI_CLIENT_ID"], "client-123")
+        self.assertEqual(res["GOOGLE_WORKSPACE_CLI_CLIENT_SECRET"], "secret-123")
+
+    @mock.patch(
+        "get_credential.resolve_all_secrets",
+        return_value={"SLACK_BOT_TOKEN": "xoxb-1"},
+    )
+    @mock.patch("get_credential.run_command_with_injected_secrets", return_value=0)
+    def test_main_run_default_all(
+        self, mock_run_cmd: mock.MagicMock, mock_all: mock.MagicMock
+    ) -> None:
+        code = main(["run", "--", "agy"])
+        self.assertEqual(code, 0)
+        mock_all.assert_called_once_with(provider="bitwarden", project_id=None)
+        mock_run_cmd.assert_called_once_with(["agy"], {"SLACK_BOT_TOKEN": "xoxb-1"})
 
 
 if __name__ == "__main__":
