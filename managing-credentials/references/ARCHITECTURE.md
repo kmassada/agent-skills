@@ -51,67 +51,37 @@ pipeline, and disaster recovery workflows for local credential management.
 
 ## 2. Vault Structure & Mapping Conventions
 
-### A. Bitwarden Secrets Manager (`ai-agents` Project)
+### A. Bitwarden Secrets Manager
 
-In Bitwarden, secrets are organized as structured JSON under clean service
-names:
+In Bitwarden, secrets are stored as structured JSON or individual key-value pairs
+under service names:
 
-* **Secret: `slack`**
+```json
+{
+  "api_key": "...",
+  "service_token": "..."
+}
+```
 
-  ```json
-  {
-    "bot_token": "xoxb-...",
-    "team_id": "T012345678",
-    "workspace_url": "https://your-workspace.slack.com",
-    "workspace_name": "ai-agents",
-    "bot_name": "antigravity"
-  }
-  ```
+### B. Local `pass` Hierarchy (`cred list`)
 
-* **Secret: `gws`**
-
-  ```json
-  {
-    "client_id": "....apps.googleusercontent.com",
-    "client_secret": "GOCSPX-...",
-    "project_id": "my-gws-project"
-  }
-  ```
-
-### B. Local `pass` Tree (`cred list`)
-
-When synced, `pass` organizes secrets into hierarchical folders matching the
-service names:
+When synced, `pass` organizes secrets into hierarchical folders:
 
 ```text
 ai-agents/
-├── bitwarden/
-│   ├── access_token
-│   └── project_id
-├── gws/
-│   ├── client_id
-│   ├── client_secret
-│   └── project_id
-└── slack/
-    ├── bot_name
-    ├── bot_token
-    ├── team_id
-    ├── workspace_name
-    └── workspace_url
+├── <service>/
+│   ├── <field_1>
+│   └── <field_2>
 ```
 
 ### C. Automatic Environment Variable Injection
 
-When `cred run -- <command>` is executed:
+When `cred run -- <command>` is executed, directory paths are automatically
+transformed into uppercase environment variables for child processes:
 
-* `ai-agents/slack/bot_token` -> `SLACK_BOT_TOKEN`
-* `ai-agents/slack/team_id` -> `SLACK_TEAM_ID`
-* `ai-agents/gws/client_id` -> `GWS_CLIENT_ID` and
-  `GOOGLE_WORKSPACE_CLI_CLIENT_ID`
-* `ai-agents/gws/client_secret` -> `GWS_CLIENT_SECRET` and
-  `GOOGLE_WORKSPACE_CLI_CLIENT_SECRET`
-* `ai-agents/gws/project_id` -> `GWS_PROJECT_ID` and
-  `GOOGLE_WORKSPACE_PROJECT_ID`
+* `ai-agents/<service>/<field>` -> `<SERVICE>_<FIELD>`
+* Standard aliases (e.g., `GWS_*` -> `GOOGLE_WORKSPACE_CLI_*`) are mapped
+  automatically.
 
 ---
 
