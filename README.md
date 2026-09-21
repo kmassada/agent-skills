@@ -12,7 +12,7 @@ compatible with both **Google Antigravity** and **Anthropic Claude Code**.
 | [`authoring-skills`](authoring-skills/SKILL.md)         | Guides the creation, structuring, formatting, evaluating, and auditing of agent skills.                                                                                                                                                                  | `references`, `evals`, `scripts` |
 | [`controlling-kitty`](controlling-kitty/SKILL.md)       | Manages Kitty terminal emulator tabs, windows, and splits.                                                                                                                                                                                               | `references`, `evals`, `scripts` |
 | [`controlling-tmux`](controlling-tmux/SKILL.md)         | Manages tmux terminal sessions, windows, and panes.                                                                                                                                                                                                      | `references`, `evals`, `scripts` |
-| [`managing-credentials`](managing-credentials/SKILL.md) | Configures and manages credentials locally using Doppler as the developer runtime engine, with optional upstream hydration from Bitwarden and Google Cloud Secret Manager.                                                                               | `evals`, `scripts`               |
+| [`managing-credentials`](managing-credentials/SKILL.md) | Configures and manages credentials locally using standard Unix pass (GPG) and Bitwarden Secrets Manager as local developer runtime engines, with zero plaintext disk footprint and silent in-memory process injection.                                   | `evals`, `scripts`               |
 | [`sharing-snips`](sharing-snips/SKILL.md)               | Provides a workflow and script to capture screenshots, automatically upload them to a Google Cloud Storage bucket using the Python client library, and copy the public URL to the macOS clipboard.                                                       | `evals`, `scripts`               |
 | [`writing-markdown`](writing-markdown/SKILL.md)         | Guides writing and formatting clean, lint-compliant Markdown documents.                                                                                                                                                                                  | `references`, `evals`, `scripts` |
 | [`writing-python`](writing-python/SKILL.md)             | Enforces modern, idiomatic Python standards, static typing with collections.abc and Pylance/Pyright, open-source readability via Ruff and PEP 8, deterministic execution with uv and PEP 723, companion test discipline, and pre-commit test automation. | `references`, `evals`, `scripts` |
@@ -80,11 +80,12 @@ compatible with both **Google Antigravity** and **Anthropic Claude Code**.
 
 ### [`managing-credentials`](managing-credentials/SKILL.md)
 
-> Configures and manages credentials locally using Doppler as the developer
-> runtime engine, with optional upstream hydration from Bitwarden and Google
-> Cloud Secret Manager. Use when installing Doppler, authenticating, setting
-> local project scopes, injecting credentials at runtime with doppler run, or
-> syncing upstream vaults. Don't use for unencrypted dot-env files.
+> Configures and manages credentials locally using standard Unix pass (GPG) and
+> Bitwarden Secrets Manager as local developer runtime engines, with zero
+> plaintext disk footprint and silent in-memory process injection. Use when
+> storing credentials, ingesting OAuth JSON or dot-env files, listing secret
+> trees safely, or running agent processes with cred run. Don't use for
+> unencrypted dot-env files.
 
 - **Directory**: [`managing-credentials/`](managing-credentials/)
 - **Evaluations**: [`evals.json`](managing-credentials/evals/evals.json)

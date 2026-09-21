@@ -15,14 +15,17 @@ import unittest
 from unittest import mock
 
 from get_credential import (
+    list_secrets,
     main,
     resolve_all_secrets,
     resolve_from_bitwarden,
     resolve_from_doppler,
     resolve_from_gcp,
+    resolve_from_pass,
     resolve_secret,
     run_command_with_injected_secrets,
     save_secret,
+    save_to_pass,
     sync_to_doppler,
 )
 
@@ -228,10 +231,20 @@ class TestGetCredential(unittest.TestCase):
 
     @mock.patch("get_credential.resolve_secret", return_value="synced_val")
     @mock.patch("get_credential.sync_to_doppler", return_value=True)
-    def test_main_sync(
+    def test_main_sync_doppler(
         self, mock_sync: mock.MagicMock, mock_resolve: mock.MagicMock
     ) -> None:
-        code = main(["sync", "--upstream", "gcp", "--keys", "KEY1,KEY2"])
+        code = main(
+            [
+                "sync",
+                "--upstream",
+                "gcp",
+                "--dest",
+                "doppler",
+                "--keys",
+                "KEY1,KEY2",
+            ]
+        )
         self.assertEqual(code, 0)
         self.assertEqual(
             mock_sync.call_args[0][0], {"KEY1": "synced_val", "KEY2": "synced_val"}
@@ -380,6 +393,8 @@ class TestGetCredential(unittest.TestCase):
                 "sync",
                 "--upstream",
                 "bitwarden",
+                "--dest",
+                "doppler",
                 "--keys",
                 "MY_CUSTOM_VAR:gws_auth.client_id",
             ]
@@ -453,10 +468,49 @@ class TestGetCredential(unittest.TestCase):
     def test_main_run_default_all(
         self, mock_run_cmd: mock.MagicMock, mock_all: mock.MagicMock
     ) -> None:
-        code = main(["run", "--", "agy"])
+        with mock.patch("os.path.exists", return_value=False):
+            code = main(["run", "--", "agy"])
         self.assertEqual(code, 0)
-        mock_all.assert_called_once_with(provider="bitwarden", project_id=None)
+        mock_all.assert_called_once_with(
+            provider="bitwarden", prefix="ai-agents", project_id=None
+        )
         mock_run_cmd.assert_called_once_with(["agy"], {"SLACK_BOT_TOKEN": "xoxb-1"})
+
+    @mock.patch("shutil.which", return_value="/usr/local/bin/pass")
+    @mock.patch("subprocess.run")
+    def test_resolve_from_pass(
+        self, mock_run: mock.MagicMock, mock_which: mock.MagicMock
+    ) -> None:
+        mock_run.return_value = mock.MagicMock(returncode=0, stdout="my_pass_secret\n")
+        val = resolve_from_pass("slack/bot_token")
+        self.assertEqual(val, "my_pass_secret")
+
+    @mock.patch("shutil.which", return_value="/usr/local/bin/pass")
+    @mock.patch("subprocess.run")
+    def test_save_to_pass(
+        self, mock_run: mock.MagicMock, mock_which: mock.MagicMock
+    ) -> None:
+        mock_run.return_value = mock.MagicMock(returncode=0, stdout="", stderr="")
+        ok = save_to_pass("slack/bot_token", value="xoxb-test")
+        self.assertTrue(ok)
+        mock_run.assert_called_once_with(
+            ["pass", "insert", "-m", "-f", "ai-agents/slack/bot_token"],
+            input="xoxb-test",
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+    @mock.patch("shutil.which", return_value="/usr/local/bin/pass")
+    @mock.patch("subprocess.run")
+    def test_list_secrets_pass(
+        self, mock_run: mock.MagicMock, mock_which: mock.MagicMock
+    ) -> None:
+
+        mock_run.return_value = mock.MagicMock(returncode=0)
+        code = list_secrets(provider="pass")
+        self.assertEqual(code, 0)
+        mock_run.assert_called_once_with(["pass", "ls", "ai-agents"], check=False)
 
 
 if __name__ == "__main__":

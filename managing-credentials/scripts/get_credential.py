@@ -44,6 +44,85 @@ def _load_bw_key_file() -> None:
             pass
 
 
+def resolve_from_pass(secret_name: str, prefix: str = "ai-agents") -> str | None:
+    """Retrieves a secret from the standard Unix password manager (pass).
+
+    Supports folder trees ('ai-agents/slack/bot_token', 'slack.bot_token',
+    'slack/bot_token', or 'bot_token').
+
+    Args:
+        secret_name: Secret path, key name, or dot-path.
+        prefix: Root folder prefix in password-store (default: 'ai-agents').
+
+    Returns:
+        Decrypted secret string if found, otherwise None.
+    """
+    if not shutil.which("pass"):
+        return None
+
+    candidates: list[str] = []
+    clean_name = secret_name.replace(".", "/")
+
+    if clean_name.startswith(f"{prefix}/"):
+        candidates.append(clean_name)
+    else:
+        candidates.append(f"{prefix}/{clean_name}")
+        candidates.append(clean_name)
+
+    parent_key = None
+    sub_key = None
+    if "." in secret_name:
+        parent_key, _, sub_key = secret_name.partition(".")
+
+    for cand in candidates:
+        try:
+            res = subprocess.run(
+                ["pass", "show", cand],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if res.returncode == 0 and res.stdout:
+                lines = res.stdout.splitlines()
+                if lines:
+                    val = lines[0].strip()
+                    if val.startswith("{") or "\n" in res.stdout:
+                        try:
+                            full_json = json.loads(res.stdout)
+                            if isinstance(full_json, dict) and sub_key:
+                                for k, v in full_json.items():
+                                    if k.lower() == sub_key.lower():
+                                        return str(v)
+                        except json.JSONDecodeError:
+                            pass
+                    return val
+        except (subprocess.SubprocessError, OSError):
+            pass
+
+    if parent_key and sub_key:
+        parent_cand = f"{prefix}/{parent_key}"
+        try:
+            res = subprocess.run(
+                ["pass", "show", parent_cand],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if res.returncode == 0 and res.stdout.strip():
+                try:
+                    parsed = json.loads(res.stdout.strip())
+                    if isinstance(parsed, dict):
+                        for k, v in parsed.items():
+                            if k.lower() == sub_key.lower():
+                                return str(v)
+                except json.JSONDecodeError:
+                    pass
+        except (subprocess.SubprocessError, OSError):
+            pass
+
+    return None
+
+
 def resolve_from_bitwarden(
     secret_name: str, item_name: str | None = None
 ) -> str | None:
@@ -325,6 +404,8 @@ def resolve_secret(
     # 1. Explicit provider routing
     if provider == "env":
         return os.environ.get(secret_name)
+    if provider == "pass":
+        return resolve_from_pass(secret_name)
     if provider == "bitwarden":
         return resolve_from_bitwarden(secret_name, item_name=item_name)
     if provider == "gcp":
@@ -335,6 +416,10 @@ def resolve_secret(
     # 2. Automatic resolution hierarchy
     if secret_name in os.environ:
         return os.environ[secret_name]
+
+    pass_val = resolve_from_pass(secret_name)
+    if pass_val:
+        return pass_val
 
     bw_val = resolve_from_bitwarden(secret_name, item_name=item_name)
     if bw_val:
@@ -352,19 +437,95 @@ def resolve_secret(
 
 
 def resolve_all_secrets(
-    provider: str = "bitwarden",
+    provider: str = "pass",
+    prefix: str = "ai-agents",
     project_id: str | None = None,
 ) -> Mapping[str, str]:
     """Resolves and flattens all secrets from a vault into environment variables.
 
     Args:
-        provider: Target vault provider ('bitwarden', 'gcp', 'doppler').
+        provider: Target vault provider ('pass', 'bitwarden', 'gcp', 'doppler').
+        prefix: Path prefix for pass store (default: 'ai-agents').
         project_id: Optional project identifier.
 
     Returns:
         Mapping of environment variable names to secret values.
     """
     injected: dict[str, str] = {}
+    if provider == "pass":
+        if not shutil.which("pass"):
+            return injected
+        store_dir = os.path.expanduser("~/.password-store")
+        target_root = os.path.join(store_dir, prefix)
+        if not os.path.exists(target_root):
+            target_root = store_dir
+
+        if os.path.exists(target_root):
+            for root, _, files in os.walk(target_root):
+                for file in files:
+                    if file.endswith(".gpg") and not file.startswith("."):
+                        rel_dir = os.path.relpath(root, store_dir)
+                        base_name = file[:-4]
+                        if rel_dir == ".":
+                            entry_path = base_name
+                        else:
+                            entry_path = f"{rel_dir}/{base_name}"
+
+                        res = subprocess.run(
+                            ["pass", "show", entry_path],
+                            capture_output=True,
+                            text=True,
+                            check=False,
+                        )
+                        if res.returncode == 0 and res.stdout.strip():
+                            val = res.stdout.strip().splitlines()[0]
+                            clean_rel = entry_path
+                            if clean_rel.startswith(f"{prefix}/"):
+                                clean_rel = clean_rel[len(prefix) + 1 :]
+
+                            parts = clean_rel.split("/")
+                            if len(parts) < 2 and "_" in clean_rel:
+                                # Also handle flat names like slack_agents_bot_token or gws_auth_client_id
+                                if clean_rel.startswith("slack_agents_"):
+                                    parts = [
+                                        "slack",
+                                        clean_rel[len("slack_agents_") :],
+                                    ]
+                                elif clean_rel.startswith("gws_auth_"):
+                                    parts = [
+                                        "gws",
+                                        clean_rel[len("gws_auth_") :],
+                                    ]
+
+                            if len(parts) >= 2:
+                                service = parts[0].lower()
+                                field = "_".join(parts[1:]).lower()
+                                if service == "slack":
+                                    if field == "bot_token":
+                                        injected["SLACK_BOT_TOKEN"] = val
+                                    elif field == "team_id":
+                                        injected["SLACK_TEAM_ID"] = val
+                                    elif field == "workspace_url":
+                                        injected["SLACK_WORKSPACE_URL"] = val
+                                elif service in ("gws", "google_workspace"):
+                                    if field == "client_id":
+                                        injected["GOOGLE_WORKSPACE_CLI_CLIENT_ID"] = val
+                                        injected["GWS_CLIENT_ID"] = val
+                                    elif field == "client_secret":
+                                        injected[
+                                            "GOOGLE_WORKSPACE_CLI_CLIENT_SECRET"
+                                        ] = val
+                                        injected["GWS_CLIENT_SECRET"] = val
+                                    elif field == "project_id":
+                                        injected["GOOGLE_WORKSPACE_PROJECT_ID"] = val
+                                        injected["GWS_PROJECT_ID"] = val
+
+                                var_name = clean_rel.replace("/", "_").upper()
+                                injected[var_name] = val
+                            else:
+                                injected[clean_rel.upper()] = val
+        return injected
+
     if provider == "bitwarden":
         _load_bw_key_file()
         if not shutil.which("bws") or not os.environ.get("BWS_ACCESS_TOKEN"):
@@ -483,14 +644,138 @@ def sync_to_doppler(
         return False
 
 
+def save_to_pass(
+    secret_name: str,
+    value: str | None = None,
+    from_file: str | None = None,
+    delete_after: bool = False,
+    prefix: str = "ai-agents",
+) -> bool:
+    """Saves a secret or structured payload to the password store (pass).
+
+    Args:
+        secret_name: Target path or service name (e.g. 'slack/bot_token' or 'gws').
+        value: Plaintext secret value or JSON string.
+        from_file: Optional file path to ingest.
+        delete_after: If True, deletes source file upon successful save.
+        prefix: Password store folder prefix.
+
+    Returns:
+        True if successfully saved, False otherwise.
+    """
+    if not shutil.which("pass"):
+        print("Error: 'pass' CLI executable not found.", file=sys.stderr)
+        return False
+
+    entries_to_write: dict[str, str] = {}
+
+    if from_file:
+        resolved_path = os.path.expanduser(from_file)
+        if not os.path.exists(resolved_path):
+            print(f"Error: File not found: {from_file}", file=sys.stderr)
+            return False
+        try:
+            with open(resolved_path, encoding="utf-8") as f:
+                content = f.read()
+
+            try:
+                parsed = json.loads(content)
+                if isinstance(parsed, dict):
+                    wrapper = parsed.get("installed") or parsed.get("web")
+                    if isinstance(wrapper, dict):
+                        parsed = wrapper
+
+                    clean_base = secret_name.replace(".", "/")
+                    if not clean_base.startswith(f"{prefix}/"):
+                        clean_base = f"{prefix}/{clean_base}"
+
+                    for k, v in parsed.items():
+                        entries_to_write[f"{clean_base}/{k.lower()}"] = str(v)
+                else:
+                    target_path = secret_name.replace(".", "/")
+                    if not target_path.startswith(f"{prefix}/"):
+                        target_path = f"{prefix}/{target_path}"
+                    entries_to_write[target_path] = content.strip()
+            except json.JSONDecodeError:
+                clean_base = secret_name.replace(".", "/")
+                if not clean_base.startswith(f"{prefix}/"):
+                    clean_base = f"{prefix}/{clean_base}"
+                has_env_lines = False
+                for line in content.splitlines():
+                    clean_line = line.strip()
+                    if (
+                        clean_line
+                        and not clean_line.startswith("#")
+                        and "=" in clean_line
+                    ):
+                        if clean_line.startswith("export "):
+                            clean_line = clean_line[7:].strip()
+                        k, _, v = clean_line.partition("=")
+                        entries_to_write[f"{clean_base}/{k.strip().lower()}"] = (
+                            v.strip().strip("'\"")
+                        )
+                        has_env_lines = True
+                if not has_env_lines:
+                    entries_to_write[clean_base] = content.strip()
+
+        except OSError as e:
+            print(f"Error reading file {from_file}: {e}", file=sys.stderr)
+            return False
+    elif value is not None:
+        clean_base = secret_name.replace(".", "/")
+        if not clean_base.startswith(f"{prefix}/"):
+            clean_base = f"{prefix}/{clean_base}"
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, dict):
+                for k, v in parsed.items():
+                    entries_to_write[f"{clean_base}/{k.lower()}"] = str(v)
+            else:
+                entries_to_write[clean_base] = value
+        except json.JSONDecodeError:
+            entries_to_write[clean_base] = value
+    else:
+        print(
+            "Error: Either value or --from-file must be provided.",
+            file=sys.stderr,
+        )
+        return False
+
+    success = True
+    for path, val in entries_to_write.items():
+        proc = subprocess.run(
+            ["pass", "insert", "-m", "-f", path],
+            input=val,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if proc.returncode != 0:
+            print(
+                f"Error saving '{path}' to pass: {proc.stderr}",
+                file=sys.stderr,
+            )
+            success = False
+
+    if success and from_file and delete_after:
+        resolved_path = os.path.expanduser(from_file)
+        try:
+            os.remove(resolved_path)
+        except OSError:
+            pass
+
+    return success
+
+
 def save_secret(
     secret_name: str,
     value: str | None = None,
-    provider: str = "bitwarden",
+    provider: str = "pass",
     project_id: str | None = None,
     note: str | None = None,
     from_file: str | None = None,
     delete_after: bool = False,
+    prefix: str = "ai-agents",
 ) -> bool:
     """Saves or updates a secret across vaults with structured JSON support.
 
@@ -500,15 +785,25 @@ def save_secret(
     Args:
         secret_name: Name of the secret or dot-path.
         value: Plaintext or JSON value to store.
-        provider: Target vault provider ('bitwarden', 'gcp', 'doppler').
+        provider: Target vault provider ('pass', 'bitwarden', 'gcp', 'doppler').
         project_id: Optional project UUID or project name.
         note: Optional note / description for the secret.
         from_file: Optional file path to ingest secret data from.
         delete_after: Whether to delete the source file after ingestion.
+        prefix: Pass store prefix (default: 'ai-agents').
 
     Returns:
         True if successfully saved, otherwise False.
     """
+    if provider == "pass":
+        return save_to_pass(
+            secret_name,
+            value=value,
+            from_file=from_file,
+            delete_after=delete_after,
+            prefix=prefix,
+        )
+
     if from_file:
         resolved_path = os.path.expanduser(from_file)
         if not os.path.exists(resolved_path):
@@ -718,6 +1013,58 @@ def run_command_with_injected_secrets(
         return 1
 
 
+def list_secrets(
+    provider: str = "pass",
+    prefix: str = "ai-agents",
+    project_id: str | None = None,
+) -> int:
+    """Safely lists secrets metadata without revealing secret values."""
+    if provider == "pass":
+        if not shutil.which("pass"):
+            print("Error: 'pass' CLI executable not found.", file=sys.stderr)
+            return 1
+        print(f"Password Store Tree ({prefix}):")
+        proc = subprocess.run(["pass", "ls", prefix], check=False)
+        return proc.returncode
+
+    if provider == "bitwarden":
+        _load_bw_key_file()
+        if not shutil.which("bws") or not os.environ.get("BWS_ACCESS_TOKEN"):
+            print(
+                "Error: BWS_ACCESS_TOKEN not set or bws CLI missing.",
+                file=sys.stderr,
+            )
+            return 1
+        proj = project_id or os.environ.get("BWS_PROJECT_ID")
+        if not proj:
+            print("Error: BWS_PROJECT_ID not set.", file=sys.stderr)
+            return 1
+        res = subprocess.run(
+            ["bws", "secret", "list", proj],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            try:
+                items = json.loads(res.stdout)
+                if isinstance(items, list):
+                    print("Bitwarden Secrets (Metadata only):")
+                    for it in items:
+                        if isinstance(it, dict):
+                            print(f"  * {it.get('key')} (ID: {it.get('id')})")
+                    return 0
+            except json.JSONDecodeError:
+                pass
+        return 1
+
+    print(
+        f"List command not supported for provider '{provider}'.",
+        file=sys.stderr,
+    )
+    return 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """CLI entrypoint for get_credential."""
     parser = argparse.ArgumentParser(
@@ -733,11 +1080,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     set_parser.add_argument(
         "--provider",
-        choices=["bitwarden", "gcp", "doppler"],
-        default="bitwarden",
-        help="Target vault provider (default: bitwarden)",
+        choices=["pass", "bitwarden", "gcp", "doppler"],
+        default="pass",
+        help="Target vault provider (default: pass)",
     )
     set_parser.add_argument("--project", help="Project ID or UUID")
+    set_parser.add_argument("--prefix", default="ai-agents", help="Pass store prefix")
     set_parser.add_argument("--note", help="Optional description/note for secret")
     set_parser.add_argument("--from-file", help="Ingest secret from JSON or .env file")
     set_parser.add_argument(
@@ -751,10 +1099,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     get_parser.add_argument("secret_name", help="Name of the secret key")
     get_parser.add_argument(
         "--provider",
-        choices=["bitwarden", "gcp", "doppler", "env"],
+        choices=["pass", "bitwarden", "gcp", "doppler", "env"],
         help="Explicit secret provider",
     )
     get_parser.add_argument("--project", help="GCP or Doppler Project ID")
+    get_parser.add_argument("--prefix", default="ai-agents", help="Pass store prefix")
     get_parser.add_argument("--item", help="Bitwarden item name")
     get_parser.add_argument(
         "--format",
@@ -762,6 +1111,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         default="plain",
         help="Output format",
     )
+
+    # list subcommand
+    list_parser = subparsers.add_parser(
+        "list", help="Safely list secret names without revealing secret values"
+    )
+    list_parser.add_argument(
+        "--provider",
+        choices=["pass", "bitwarden", "gcp"],
+        default="pass",
+        help="Secret provider to inspect (default: pass)",
+    )
+    list_parser.add_argument("--prefix", default="ai-agents", help="Pass store prefix")
+    list_parser.add_argument("--project", help="Project ID or UUID")
 
     # run subcommand
     run_parser = subparsers.add_parser(
@@ -773,15 +1135,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     run_parser.add_argument(
         "--provider",
-        choices=["bitwarden", "gcp", "doppler", "env"],
+        choices=["pass", "bitwarden", "gcp", "doppler", "env"],
         help="Explicit secret provider",
     )
+    run_parser.add_argument("--prefix", default="ai-agents", help="Pass store prefix")
     run_parser.add_argument("--project", help="GCP or Doppler Project ID")
     run_parser.add_argument("cmd", nargs=argparse.REMAINDER, help="Command to run")
 
     # sync subcommand
     sync_parser = subparsers.add_parser(
-        "sync", help="Sync upstream secrets into Doppler"
+        "sync", help="Sync upstream secrets into pass or Doppler"
     )
     sync_parser.add_argument(
         "--keys",
@@ -794,9 +1157,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         choices=["bitwarden", "gcp"],
         help="Upstream source vault",
     )
+    sync_parser.add_argument(
+        "--dest",
+        choices=["pass", "doppler"],
+        default="pass",
+        help="Destination vault to populate (default: pass)",
+    )
+    sync_parser.add_argument("--prefix", default="ai-agents", help="Pass store prefix")
     sync_parser.add_argument("--project", help="GCP or Doppler Project ID")
 
     args = parser.parse_args(argv)
+
+    if args.command == "list":
+        return list_secrets(
+            provider=args.provider,
+            prefix=args.prefix,
+            project_id=args.project,
+        )
 
     if args.command == "set":
         ok = save_secret(
@@ -807,6 +1184,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             note=args.note,
             from_file=args.from_file,
             delete_after=args.delete_after,
+            prefix=args.prefix,
         )
         if ok:
             print(f"Successfully saved secret '{args.secret_name}' to {args.provider}.")
@@ -847,6 +1225,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("Error: No command specified to run.", file=sys.stderr)
             return 1
 
+        chosen_provider = args.provider
+        if not chosen_provider:
+            # Auto-detect: if password-store has entries, use pass; else bitwarden
+            pass_dir = os.path.expanduser("~/.password-store")
+            if os.path.exists(os.path.join(pass_dir, args.prefix)):
+                chosen_provider = "pass"
+            else:
+                chosen_provider = "bitwarden"
+
         if args.keys:
             keys = [k.strip() for k in args.keys.split(",") if k.strip()]
             resolved: dict[str, str] = {}
@@ -856,7 +1243,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if ":" in key:
                     target_var, _, source_key = key.partition(":")
                 val = resolve_secret(
-                    source_key, provider=args.provider, project_id=args.project
+                    source_key,
+                    provider=chosen_provider,
+                    project_id=args.project,
                 )
                 if val is not None:
                     resolved[target_var] = val
@@ -868,7 +1257,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             resolved = dict(
                 resolve_all_secrets(
-                    provider=args.provider or "bitwarden",
+                    provider=chosen_provider,
+                    prefix=args.prefix,
                     project_id=args.project,
                 )
             )
@@ -887,7 +1277,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 source_key, provider=args.upstream, project_id=args.project
             )
             if val is not None:
-                # If secret is full JSON without dot-path or destination mapping, unpack all
                 if ":" not in key and "." not in key:
                     try:
                         val_json = json.loads(val)
@@ -906,6 +1295,19 @@ def main(argv: Sequence[str] | None = None) -> int:
                     file=sys.stderr,
                 )
                 return 1
+
+        if args.dest == "pass":
+            for target_k, val in resolved.items():
+                save_to_pass(
+                    target_k.lower(),
+                    value=val,
+                    prefix=args.prefix,
+                )
+            print(
+                f"Successfully synced {len(resolved)} secrets from "
+                f"{args.upstream} into pass ({args.prefix})."
+            )
+            return 0
 
         ok = sync_to_doppler(resolved, project=args.project)
         if ok:

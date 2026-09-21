@@ -1,222 +1,155 @@
 ---
 name: managing-credentials
 description: >-
-  Configures and manages credentials locally using Doppler as the developer
-  runtime engine, with optional upstream hydration from Bitwarden and Google
-  Cloud Secret Manager. Use when installing Doppler, authenticating, setting
-  local project scopes, injecting credentials at runtime with doppler run, or
-  syncing upstream vaults. Don't use for unencrypted dot-env files.
+  Configures and manages credentials locally using standard Unix pass (GPG)
+  and Bitwarden Secrets Manager as local developer runtime engines, with zero
+  plaintext disk footprint and silent in-memory process injection. Use when
+  storing credentials, ingesting OAuth JSON or dot-env files, listing secret
+  trees safely, or running agent processes with cred run. Don't use for
+  unencrypted dot-env files.
 metadata:
-  version: "0.2.0"
+  version: "0.3.0"
 ---
 
 # Managing Credentials
 
-Use this skill to configure local credential management using **Doppler** as the
-primary developer environment and runtime engine, ensuring sensitive tokens
-(such as Slack, API keys, or database credentials) remain off disk and out of
-git repositories.
+Use this skill to configure local credential management using **standard Unix
+`pass` (GPG)** and **Bitwarden Secrets Manager** as local developer environment
+and runtime engines, ensuring sensitive tokens (such as Slack, API keys, or
+Google Workspace OAuth credentials) remain off disk and out of git repositories.
 
 ---
 
-## 1. Pre-Flight Verification
+## 1. Quick Start: Local Credential CLI (`cred`)
 
-Verify that the Doppler CLI is installed on the host:
+The `cred` CLI provides a unified, 100% local interface for storing, inspecting,
+and injecting secrets into child processes:
 
 ```bash
-# macOS (Homebrew)
-brew install dopplerhq/cli/doppler
+# 1. Safely list stored secrets (never leaks secret values)
+cred list
 
-# Linux / Debian / Ubuntu
-curl -sLf --retry 3 --tlsv1.2 'https://packages.doppler.com/public/cli/gpg.key' | \
-  sudo gpg --dearmor -o /usr/share/keyrings/doppler-archive-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/doppler-archive-keyring.gpg] https://packages.doppler.com/public/cli/deb/debian any-version main" | \
-  sudo tee /etc/apt/sources.list.d/doppler.list
-sudo apt-get update && sudo apt-get install doppler
+# 2. Store a structured secret or individual field
+cred set slack/bot_token "xoxb-..."
+cred set slack/team_id "T..."
+
+# 3. Ingest OAuth JSON or .env file and automatically wipe source file
+cred set gws --from-file ~/Downloads/client_secret_*.json --delete-after
+
+# 4. Launch agy or any tool with all secrets injected strictly into memory
+cred run -- agy
 ```
 
-Log in to authenticate the CLI session:
+---
+
+## 2. Setting Up Local `pass` (Standard Unix Password Manager)
+
+`pass` uses standard GPG encryption and Git version control inside
+`~/.password-store/`:
+
+### A. Installation (macOS Homebrew)
 
 ```bash
-doppler login
+brew install pass gnupg pinentry-mac
+```
+
+### B. Configure GPG Agent for Silent Keychain Unlock
+
+Configure `~/.gnupg/gpg-agent.conf` so macOS Keychain caches credentials
+without blocking background agents:
+
+```conf
+pinentry-program /opt/homebrew/bin/pinentry-mac
+default-cache-ttl 86400
+max-cache-ttl 604800
+```
+
+Restart the GPG agent:
+
+```bash
+gpgconf --kill gpg-agent
 ```
 
 ---
 
-## 2. Local Project Setup
+## 3. Managing Secrets Locally with `pass`
 
-Set up a project scope for your agent workspace:
-
-1. **Create the project in Doppler:**
-
-   ```bash
-   doppler projects create ai-agents
-   ```
-
-2. **Bind the local directory to the project:**
-
-   ```bash
-   doppler setup --project ai-agents --config dev
-   ```
-
-   This writes a repository-relative `.doppler.yaml` file mapping the directory
-   to the chosen project and environment config without saving secrets.
-
-3. **Verify directory configuration:**
-
-   ```bash
-   doppler configure get
-   ```
-
----
-
-## 3. Managing Secrets Locally
-
-Set, inspect, or delete credentials directly through the Doppler CLI:
-
-1. **Set a secret:**
-
-   ```bash
-   doppler secrets set SLACK_BOT_TOKEN="xoxb-..."
-   doppler secrets set SLACK_TEAM_ID="T..."
-   ```
-
-2. **List stored secret names (without revealing values):**
-
-   ```bash
-   doppler secrets --names
-   ```
-
-3. **Retrieve a single secret value (stdout only):**
-
-   ```bash
-   doppler secrets get SLACK_BOT_TOKEN --plain
-   ```
-
-4. **Delete a secret:**
-
-   ```bash
-   doppler secrets delete SLACK_BOT_TOKEN
-   ```
-
----
-
-## 4. Storing and Updating Vault Secrets
-
-Use [`scripts/get_credential.py`](./scripts/get_credential.py) to save or update
-credentials in upstream vaults with automatic dot-path updates and zero-disk
-plaintext file ingestion:
-
-### A. Saving Structured Secrets and Subfield Updates
+### A. Storing Structured Secrets
 
 ```bash
-# Save a structured JSON secret into Bitwarden Secrets Manager
-python3 scripts/get_credential.py set slack_agents \
-  '{"bot_token": "xoxb-...", "team_id": "T..."}' \
-  --note "Slack Bot Workspace Token"
-
-# Atomically update a single subfield in existing JSON secret
-python3 scripts/get_credential.py set slack_agents.bot_token "xoxb-new..."
-```
-
-### B. Ingesting OAuth / Env Files and Auto-Purging
-
-Ingest downloaded client JSON or `.env` files and securely delete the plaintext
-file immediately after ingestion:
-
-```bash
-# Ingest Google OAuth client JSON into bws and delete plaintext download
-python3 scripts/get_credential.py set gws_auth \
+# Ingest Google Workspace OAuth JSON and auto-purge download
+python3 scripts/get_credential.py set gws \
   --from-file ~/Downloads/client_secret_*.json \
-  --delete-after \
-  --note "Google Workspace CLI OAuth Client"
+  --delete-after
+
+# Insert or update individual field
+python3 scripts/get_credential.py set slack/bot_token "xoxb-..."
+```
+
+### B. Safely Inspecting Secrets
+
+```bash
+# List stored secret hierarchy without revealing plaintext values
+python3 scripts/get_credential.py list
+
+# Explicitly retrieve a single secret value
+python3 scripts/get_credential.py get slack_agents_bot_token
 ```
 
 ---
 
-## 5. Hydrating Doppler from Upstream Vaults
+## 4. Hydrating Local `pass` from Upstream Vaults
 
-When bootstrapping a new machine or working across environments, hydrate your
-local Doppler project directly from your upstream vault using
-[`scripts/get_credential.py`](./scripts/get_credential.py):
-
-### Option A: Google Cloud Secret Manager (Enterprise / Work)
-
-Pull corporate credentials into your local Doppler project:
+When bootstrapping a new machine or syncing from your personal Bitwarden vault
+into local `pass`:
 
 ```bash
-python3 scripts/get_credential.py sync \
-  --upstream gcp \
-  --project YOUR_GCP_PROJECT_ID \
-  --keys "SLACK_BOT_TOKEN,SLACK_TEAM_ID"
-```
-
-### Option B: Bitwarden (Personal Vault / Cross-Device)
-
-Pull credentials from Bitwarden Secrets Manager (`bws`) into Doppler, with
-support for structured JSON unpacking and explicit destination mapping:
-
-```bash
-# Sync specific subfields with custom Doppler variable names
+# Sync Bitwarden secrets directly into local pass store
 python3 scripts/get_credential.py sync \
   --upstream bitwarden \
-  --keys "SLACK_BOT_TOKEN:slack_agents.bot_token,SLACK_TEAM_ID:slack_agents.team_id"
-
-# Sync Google Workspace OAuth variables
-python3 scripts/get_credential.py sync \
-  --upstream bitwarden \
-  --keys "GOOGLE_WORKSPACE_PROJECT_ID:gws_auth.project_id,GOOGLE_WORKSPACE_CLI_CLIENT_ID:gws_auth.client_id,GOOGLE_WORKSPACE_CLI_CLIENT_SECRET:gws_auth.client_secret"
+  --dest pass \
+  --keys slack_agents,gws_auth
 ```
 
 ---
 
-## 6. Injecting Credentials at Runtime
+## 5. Injecting Credentials at Runtime
 
 Inject secrets directly into process memory at execution time with zero disk
 plaintext files:
 
-### Running with Bitwarden In-Memory Injection (Zero SaaS / 100% Local)
-
-Run any agent or script with all project credentials resolved in memory:
+### Running with Silent In-Memory Injection
 
 ```bash
-# Automatically resolves and injects ALL project secrets into child process
-python3 scripts/get_credential.py run -- agy
+# Automatically resolves and injects ALL local secrets into child process
+cred run -- agy
 
-# Run a specific script
-python3 scripts/get_credential.py run -- python3 my_script.py
+# Run a specific Python script or command
+cred run -- python3 my_script.py
 ```
 
-### Running with Doppler (Optional Cloud / Team Workflow)
-
-If using Doppler, launch commands via `doppler run`:
-
-```bash
-doppler run -- agy
-```
-
-When the agent session runs under `doppler run`, all credentials (such as
-`SLACK_BOT_TOKEN` and `SLACK_TEAM_ID`) exist only in memory. Any child stdio
-MCP servers spawned by the agent automatically inherit those environment
-variables without touching disk.
+When the agent session runs under `cred run`, all credentials (such as
+`SLACK_BOT_TOKEN`, `GOOGLE_WORKSPACE_CLI_CLIENT_ID`, and `GWS_CLIENT_SECRET`)
+exist only in memory. Any child stdio MCP servers spawned by the agent
+automatically inherit those environment variables without touching disk.
 
 ---
 
-## 7. Anti-Patterns & Guardrails
+## 6. Anti-Patterns & Guardrails
 
 | Anti-Pattern | Why It Fails | Recommended Pattern |
 | :--- | :--- | :--- |
-| **Committed `.env` file** | Exposes plaintext tokens to git history. | Use `doppler run -- <command>`. |
-| **Plaintext disk files** | Leaks unencrypted tokens on disk. | Keep in Doppler or upstream vault. |
-| **Echoing secrets to logs** | Leaks tokens into shell logs or CI. | Use `doppler secrets --names`. |
-| **Hardcoding in MCP configs** | Storing `xoxb-...` in JSON leaks tokens. | Launch agent session via `doppler run`. |
-| **Baking Doppler into MCP configs** | Couples MCP tool configs to secret manager. | Inherit secrets from parent agent process. |
+| **Committed `.env` file** | Exposes plaintext tokens to git history. | Use `cred run -- <command>`. |
+| **Plaintext disk files** | Leaks unencrypted tokens on disk. | Keep in `pass` or Bitwarden. |
+| **Echoing secrets to logs** | Leaks tokens into shell logs or CI. | Use `cred list`. |
+| **Hardcoding in MCP configs** | Storing `xoxb-...` in JSON leaks tokens. | Launch agent session via `cred run`. |
+| **Unprotected GPG key** | GPG agent blocks background scripts. | Configure `pinentry-mac` Keychain. |
 
 ---
 
-## 8. Companion Scripts
+## 7. Companion Scripts
 
-* [`scripts/check_doppler.py`](./scripts/check_doppler.py): Doppler CLI and
-  project status verification helper.
-* [`scripts/get_credential.py`](./scripts/get_credential.py): Upstream vault
-  resolver, secret persistence engine, and Doppler synchronization helper.
+* [`scripts/get_credential.py`](./scripts/get_credential.py): Local `pass` and
+  multi-vault resolver, runtime injector, and secret synchronization engine.
+* [`scripts/check_doppler.py`](./scripts/check_doppler.py): Optional Doppler CLI
+  verification helper.
