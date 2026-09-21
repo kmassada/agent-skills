@@ -103,12 +103,17 @@ def get_current_window_id(socket: str | None = None) -> int | None:
 
     try:
         os_windows = query_kitty_ls(socket=socket)
-        windows = extract_windows(os_windows)
-        for win in windows:
-            if win.get("is_active") or win.get("is_focused"):
-                return int(win["id"])
     except (subprocess.SubprocessError, FileNotFoundError, json.JSONDecodeError):
         return None
+
+    for win in extract_windows(os_windows):
+        if not (win.get("is_active") or win.get("is_focused")):
+            continue
+        try:
+            return int(win["id"])
+        except (KeyError, TypeError, ValueError):
+            # A window entry without a usable id is not fatal; keep looking.
+            continue
 
     return None
 
@@ -163,7 +168,10 @@ def parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--active-only",
         action="store_true",
-        help="Filter results to only focused/active tabs or windows.",
+        help=(
+            "Filter results to only focused/active tabs or windows. Applies to "
+            "--list-tabs, --list-windows, and the default listing."
+        ),
     )
     parser.add_argument(
         "--find-window",
@@ -212,6 +220,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     if args.find_window is not None:
+        if args.active_only:
+            sys.stderr.write(
+                "Error: --active-only is not meaningful with --find-window, "
+                "which already selects exactly one window.\n"
+            )
+            return 1
         target = find_window_by_id(os_windows, args.find_window)
         if not target:
             sys.stderr.write(f"Window ID {args.find_window} not found.\n")
@@ -253,6 +267,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps(os_windows, indent=2))
     else:
         windows = extract_windows(os_windows)
+        if args.active_only:
+            windows = [w for w in windows if w.get("is_active") or w.get("is_focused")]
         print(f"Found {len(os_windows)} OS Window(s), {len(windows)} Window(s).")
         for w in windows:
             active = "*" if w.get("is_active") else " "

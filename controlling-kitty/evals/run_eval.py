@@ -70,6 +70,34 @@ def evaluate_commands(
     return len(failures) == 0, failures
 
 
+def _as_text(value: Any) -> str:
+    """Coerces a possibly-null JSON field to a string.
+
+    Agent CLIs emit explicit nulls for absent fields, so `.get(key, "")` can
+    still hand back None. Returning "" keeps one malformed line from aborting
+    the whole run.
+
+    Args:
+        value: Arbitrary decoded JSON value.
+
+    Returns:
+        The value as a string, or "" if it is not a string.
+    """
+    return value if isinstance(value, str) else ""
+
+
+def _as_mapping(value: Any) -> Mapping[str, Any]:
+    """Coerces a possibly-null JSON field to a mapping.
+
+    Args:
+        value: Arbitrary decoded JSON value.
+
+    Returns:
+        The value as a mapping, or an empty mapping if it is not one.
+    """
+    return value if isinstance(value, Mapping) else {}
+
+
 def extract_commands(raw_output: str) -> list[str]:
     """Extracts bash commands across both Antigravity and Claude schemas.
 
@@ -87,36 +115,50 @@ def extract_commands(raw_output: str) -> list[str]:
             continue
         try:
             data = json.loads(line)
-            if isinstance(data, dict):
-                for tc in data.get("tool_calls", []):
-                    if tc.get("name") == "run_command":
-                        cmd = tc.get("args", {}).get("CommandLine", "")
-                        if cmd:
-                            executed_commands.append(cmd)
-
-                if data.get("type") == "tool_use" or "name" in data:
-                    name = data.get("name", "").lower()
-                    if name in ("bash", "execute_command", "run_command"):
-                        inp = data.get("input") or data.get("args") or {}
-                        cmd = (
-                            inp.get("command")
-                            or inp.get("CommandLine")
-                            or inp.get("cmd")
-                        )
-                        if cmd:
-                            executed_commands.append(cmd)
-
-                for block in data.get("content", []):
-                    if isinstance(block, dict) and block.get("type") == "tool_use":
-                        if block.get("name", "").lower() in (
-                            "bash",
-                            "execute_command",
-                        ):
-                            cmd = block.get("input", {}).get("command")
-                            if cmd:
-                                executed_commands.append(cmd)
         except json.JSONDecodeError:
-            pass
+            continue
+        if not isinstance(data, dict):
+            continue
+
+        tool_calls = data.get("tool_calls")
+        if isinstance(tool_calls, list):
+            for tc in tool_calls:
+                if not isinstance(tc, Mapping):
+                    continue
+                if _as_text(tc.get("name")) == "run_command":
+                    cmd = _as_text(_as_mapping(tc.get("args")).get("CommandLine"))
+                    if cmd:
+                        executed_commands.append(cmd)
+
+        if data.get("type") == "tool_use" or "name" in data:
+            if _as_text(data.get("name")).lower() in (
+                "bash",
+                "execute_command",
+                "run_command",
+            ):
+                inp = _as_mapping(data.get("input") or data.get("args"))
+                cmd = (
+                    _as_text(inp.get("command"))
+                    or _as_text(inp.get("CommandLine"))
+                    or _as_text(inp.get("cmd"))
+                )
+                if cmd:
+                    executed_commands.append(cmd)
+
+        content = data.get("content")
+        if isinstance(content, list):
+            for block in content:
+                if not isinstance(block, Mapping):
+                    continue
+                if block.get("type") != "tool_use":
+                    continue
+                if _as_text(block.get("name")).lower() in (
+                    "bash",
+                    "execute_command",
+                ):
+                    cmd = _as_text(_as_mapping(block.get("input")).get("command"))
+                    if cmd:
+                        executed_commands.append(cmd)
 
     if not executed_commands:
         cmd_line_matches = re.findall(
@@ -174,7 +216,24 @@ def run_live_case(
     except FileNotFoundError:
         return False, [f"CLI executable '{cmd[0]}' not found in PATH."]
 
+    # A failed CLI run produces no commands, which would silently satisfy every
+    # negative case (empty expected patterns, forbidden patterns unmatched).
+    # Treat a broken harness as a failure rather than as evidence of good
+    # behaviour.
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip().splitlines()
+        tail = detail[-1] if detail else "no output"
+        return False, [
+            f"CLI backend '{backend}' exited {proc.returncode}; "
+            f"results are not trustworthy. Last output: {tail}"
+        ]
+
     raw_output = proc.stdout
+    if not raw_output.strip():
+        return False, [
+            f"CLI backend '{backend}' produced no stdout; nothing to evaluate."
+        ]
+
     executed_commands = extract_commands(raw_output)
 
     skill_referenced = "kitty" in raw_output.lower() or any(
@@ -270,11 +329,14 @@ def detect_backend() -> str:
     return "agy"
 
 
-def main(argv: Sequence[str] | None = None) -> None:
+def main(argv: Sequence[str] | None = None) -> int:
     """Main CLI orchestrator for Kitty skill evaluation suite.
 
     Args:
         argv: Optional command-line arguments sequence; defaults to sys.argv[1:].
+
+    Returns:
+        Exit code (0 when every case passes, 1 otherwise).
     """
     parser = argparse.ArgumentParser(
         description="Eval suite for controlling-kitty skill (Claude Conforming)"
@@ -292,7 +354,18 @@ def main(argv: Sequence[str] | None = None) -> None:
         help="Run only specific eval ID (e.g. 1 or 2)",
     )
     parser.add_argument(
-        "--live", action="store_true", help="Run actual CLI evaluations"
+        "--live",
+        action="store_true",
+        help=(
+            "Run actual CLI evaluations. This drives a real agent CLI against "
+            "your live Kitty session and can create tabs, windows, and agent "
+            "sessions. Requires --yes to proceed."
+        ),
+    )
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Confirm the side effects of --live without an interactive prompt.",
     )
     parser.add_argument(
         "--backend",
@@ -307,6 +380,18 @@ def main(argv: Sequence[str] | None = None) -> None:
         help="Kitty socket address",
     )
     args = parser.parse_args(argv)
+
+    if args.live and not args.yes:
+        print(
+            f"{TermColor.YELLOW}Refusing to run --live without --yes."
+            f"{TermColor.RESET}\n"
+            "Live mode runs a real agent CLI with these prompts against your\n"
+            "actual Kitty session. Cases in this suite ask the agent to create\n"
+            "tabs and OS windows and to dispatch agent sessions; those side\n"
+            "effects land on your real terminal. Re-run with --yes to accept.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     if not args.dataset.exists():
         print(
@@ -334,6 +419,13 @@ def main(argv: Sequence[str] | None = None) -> None:
                 file=sys.stderr,
             )
             sys.exit(1)
+
+    if not cases:
+        print(
+            f"{TermColor.RED}Error: dataset contains no eval cases.{TermColor.RESET}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     banner = (
         f"\n{TermColor.BOLD}=== Running controlling-kitty Skill Evals "
@@ -385,15 +477,15 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     print("--------------------------------------------------")
     score_color = TermColor.GREEN if passed_count == total_count else TermColor.RED
+    percentage = (passed_count / total_count) * 100 if total_count else 0.0
     print(
         f"Score: {score_color}{passed_count}/{total_count} Passed{TermColor.RESET} "
-        f"({(passed_count / total_count) * 100:.1f}%)"
+        f"({percentage:.1f}%)"
     )
     print("--------------------------------------------------\n")
 
-    if passed_count < total_count:
-        sys.exit(1)
+    return 0 if passed_count == total_count else 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

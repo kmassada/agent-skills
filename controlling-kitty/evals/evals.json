@@ -12,7 +12,7 @@
         "The agent does NOT steal user focus with focus-window"
       ],
       "expected_command_patterns": [
-        "kitty @ send-text.*--match (id:)?2.*pytest tests/test_api\\.py"
+        "kitty @ send-text(?=.*--match (id:)?2\\b)(?=.*pytest tests/test_api\\.py)"
       ],
       "forbidden_command_patterns": [
         "^pytest tests/test_api\\.py"
@@ -28,7 +28,7 @@
         "cargo build is NOT executed directly in the agent's own subshell"
       ],
       "expected_command_patterns": [
-        "kitty @ send-text.*--match (id:)?3.*cargo build --release"
+        "kitty @ send-text(?=.*--match (id:)?3\\b)(?=.*cargo build --release)"
       ],
       "forbidden_command_patterns": [
         "^cargo build --release"
@@ -44,7 +44,7 @@
         "The agent does NOT call focus-window or focus-tab to steal focus"
       ],
       "expected_command_patterns": [
-        "kitty @ get-text.*--match (id:)?1"
+        "kitty @ get-text(?=.*--match (id:)?1\\b)"
       ],
       "forbidden_command_patterns": [
         "kitty @ focus-window",
@@ -61,7 +61,7 @@
         "The agent does NOT call focus-window"
       ],
       "expected_command_patterns": [
-        "kitty @ get-text.*--match (id:)?2.*--extent=all"
+        "kitty @ get-text(?=.*--match (id:)?2\\b)(?=.*--extent(=|\\s)all)"
       ],
       "forbidden_command_patterns": [
         "kitty @ focus-window"
@@ -76,7 +76,7 @@
         "The agent executes kitty @ focus-window --match id:2"
       ],
       "expected_command_patterns": [
-        "kitty @ focus-window.*--match (id:)?2"
+        "kitty @ focus-window(?=.*--match (id:)?2\\b)"
       ],
       "forbidden_command_patterns": []
     },
@@ -90,10 +90,10 @@
         "The agent does NOT create an entirely separate OS window"
       ],
       "expected_command_patterns": [
-        "kitty @ launch.*--location=vsplit"
+        "kitty @ launch(?=.*--location(=|\\s)vsplit)"
       ],
       "forbidden_command_patterns": [
-        "kitty @ launch.*--type=os-window"
+        "kitty @ launch(?=.*--type(=|\\s)os-window)"
       ]
     },
     {
@@ -106,7 +106,7 @@
         "The agent does NOT split the current window"
       ],
       "expected_command_patterns": [
-        "kitty @ launch.*--type=tab.*--tab-title=server"
+        "kitty @ launch(?=.*--type(=|\\s)tab)(?=.*--tab-title(=|\\s)\"?server)"
       ],
       "forbidden_command_patterns": []
     },
@@ -120,7 +120,7 @@
         "The agent uses kitty @ focus-window"
       ],
       "expected_command_patterns": [
-        "kitty @ focus-window.*--match neighbor:right"
+        "kitty @ focus-window(?=.*--match neighbor:right)"
       ],
       "forbidden_command_patterns": []
     },
@@ -161,7 +161,7 @@
         "The agent does NOT invoke agy directly in the local subshell"
       ],
       "expected_command_patterns": [
-        "(kitty @ launch.*--type=tab.*agy|dispatch_agent\\.py)"
+        "(kitty @ launch(?=.*--type(=|\\s)tab)(?=.*\\bagy\\b)|dispatch_agent\\.py)"
       ],
       "forbidden_command_patterns": []
     },
@@ -175,7 +175,7 @@
         "The agent targets the specified conversation ID with agy --conversation"
       ],
       "expected_command_patterns": [
-        "(kitty @ launch.*--conversation|dispatch_agent\\.py.*--conversation)"
+        "(kitty @ launch(?=.*--conversation)|dispatch_agent\\.py(?=.*--conversation))"
       ],
       "forbidden_command_patterns": []
     },
@@ -189,7 +189,7 @@
         "The agent targets window 2 with --match id:2"
       ],
       "expected_command_patterns": [
-        "kitty @ get-text.*--match (id:)?2.*--extent=last_cmd_output"
+        "kitty @ get-text(?=.*--match (id:)?2\\b)(?=.*--extent(=|\\s)last_cmd_output)"
       ],
       "forbidden_command_patterns": []
     },
@@ -219,7 +219,7 @@
         "The agent avoids raw multi-line unsanitized key injection"
       ],
       "expected_command_patterns": [
-        "kitty @ send-text.*--stdin"
+        "kitty @ send-text(?=.*--stdin)"
       ],
       "forbidden_command_patterns": []
     },
@@ -233,10 +233,10 @@
         "The agent does NOT create a separate OS window"
       ],
       "expected_command_patterns": [
-        "kitty @ launch.*--location=hsplit"
+        "kitty @ launch(?=.*--location(=|\\s)hsplit)"
       ],
       "forbidden_command_patterns": [
-        "kitty @ launch.*--type=os-window"
+        "kitty @ launch(?=.*--type(=|\\s)os-window)"
       ]
     },
     {
@@ -249,7 +249,7 @@
         "The agent sets title to worker"
       ],
       "expected_command_patterns": [
-        "kitty @ launch.*--type=os-window.*--title=worker"
+        "kitty @ launch(?=.*--type(=|\\s)os-window)(?=.*--title(=|\\s)\"?worker)"
       ],
       "forbidden_command_patterns": []
     },
@@ -263,7 +263,7 @@
         "The agent does NOT run agy --continue directly in the current subshell"
       ],
       "expected_command_patterns": [
-        "(kitty @ launch.*--type=tab.*agy.*--continue|dispatch_agent\\.py.*--continue)"
+        "(kitty @ launch(?=.*--type(=|\\s)tab)(?=.*\\bagy\\b)(?=.*--continue)|dispatch_agent\\.py(?=.*--continue))"
       ],
       "forbidden_command_patterns": [
         "^agy --continue"

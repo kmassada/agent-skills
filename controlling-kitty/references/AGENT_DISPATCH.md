@@ -119,8 +119,8 @@ kitty @ get-text --match id:15 --extent=all
 
 ## 4. Helper Script: `dispatch_agent.py`
 
-The companion script `scripts/dispatch_agent.py` automates argument escaping,
-slug generation, and launch configuration:
+The companion script `scripts/dispatch_agent.py` builds the launch argument
+vector, generates a slug title, and validates the anchor window:
 
 ```bash
 # Dispatch to new tab
@@ -138,3 +138,68 @@ python3 controlling-kitty/scripts/dispatch_agent.py \
   --prompt="Test run" \
   --dry-run --json
 ```
+
+### Dispatch surfaces
+
+| `--mode` | Surface | Anchored by `--target-window` |
+| :--- | :--- | :--- |
+| `tab` (default) | New tab in the current OS window | no |
+| `split-v` | Side-by-side split | yes |
+| `split-h` | Stacked top/bottom split | yes |
+| `overlay` | Overlay covering the target window | yes |
+| `os-window` | New detached desktop window | no |
+
+Anchored modes default `--target-window` to `$KITTY_WINDOW_ID`.
+
+### Resuming instead of starting
+
+`--conversation <id>` and `--continue` replace `--prompt`; they cannot be
+combined with it, because a resumed session supplies its own context. To steer
+a resumed session, send a follow-up once it is running:
+
+```bash
+python3 controlling-kitty/scripts/dispatch_agent.py --continue --mode=split-h
+kitty @ send-text --match id:<new_id> --stdin <<'EOF'
+Now run the integration suite.
+EOF
+kitty @ send-text --match id:<new_id> '\r'
+```
+
+### Argument handling
+
+The script passes the agent argv to Kitty as a list, and Kitty execs it
+directly - **no shell is involved**, so there is nothing to shell-quote and
+nothing to escape. This is what keeps a prompt containing quotes, `$`, or
+backticks from being reinterpreted.
+
+Two values are validated rather than trusted:
+
+* `--target-window` must be a plain integer ID (`14`) or `id:14`. Kitty's
+  `--match` accepts regular expressions, boolean operators, and the special
+  value `all`, so an unvalidated anchor could silently widen a split or overlay
+  onto unintended windows.
+* The dispatch mode must be one of the surfaces above.
+
+> [!NOTE]
+> `--title` is *not* sanitized, because titles legitimately contain spaces and
+> punctuation. It is passed as a single `--tab-title=<value>` argument, so it
+> cannot introduce a separate Kitty option.
+
+### API method
+
+With `--method=api`, the script first calls `agentapi new-conversation` to mint
+a conversation ID, then launches `agy --conversation <id>`:
+
+```bash
+python3 controlling-kitty/scripts/dispatch_agent.py \
+  --method=api \
+  --model=pro \
+  --profile=audit \
+  --prompt="Audit auth endpoints"
+```
+
+`--model` and `--profile` are bound to the conversation at creation time and are
+not repeated on the `agy` side. `--profile` requires `--method=api`. Under
+`--dry-run` no conversation is created; the planned command shows a
+`<conversation-id-from-agentapi>` placeholder in the position the real ID would
+occupy.

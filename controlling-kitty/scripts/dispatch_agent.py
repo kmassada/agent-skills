@@ -45,8 +45,11 @@ def build_agent_command(
     model: str | None = None,
     continue_recent: bool = False,
     extra_flags: Sequence[str] | None = None,
-) -> str:
-    """Constructs the shell command string to launch agy.
+) -> list[str]:
+    """Constructs the argv list used to launch agy.
+
+    Returns an argument vector rather than a shell string: Kitty executes the
+    program directly, so no shell quoting round trip is needed or wanted.
 
     Args:
         prompt: Optional initial prompt to pass interactively.
@@ -57,7 +60,7 @@ def build_agent_command(
         extra_flags: Additional CLI arguments for agy.
 
     Returns:
-        Shell command string formatted for Kitty window/tab execution.
+        Argument vector for the agent process, starting with "agy".
     """
     parts = ["agy"]
 
@@ -78,7 +81,7 @@ def build_agent_command(
     if extra_flags:
         parts.extend(extra_flags)
 
-    return shlex.join(parts)
+    return parts
 
 
 def run_command_safely(
@@ -86,7 +89,9 @@ def run_command_safely(
     *,
     cwd: Path | None = None,
 ) -> tuple[int, str, str]:
-    """Runs a subprocess command hermetically and captures output.
+    """Runs a subprocess command with captured output.
+
+    The child inherits this process's environment; it is not hermetic.
 
     Args:
         args: Command arguments to execute.
@@ -141,21 +146,61 @@ def create_api_conversation(
 
     try:
         data = json.loads(stdout)
-        if isinstance(data, dict):
-            return str(
-                data.get("conversationId")
-                or data.get("conversation_id")
-                or data.get("id", "")
-            )
     except json.JSONDecodeError:
-        pass
+        # Not JSON at all: agentapi printed a bare ID on the first line.
+        return stdout.splitlines()[0].strip() or None
 
-    return stdout.splitlines()[0].strip()
+    if isinstance(data, dict):
+        found = (
+            data.get("conversationId") or data.get("conversation_id") or data.get("id")
+        )
+        if found:
+            return str(found)
+        sys.stderr.write(
+            "agentapi new-conversation returned JSON without a conversation ID.\n"
+        )
+        return None
+
+    # Valid JSON that is not an object carries no ID; echoing it back as one
+    # would send a garbage --conversation value to agy.
+    sys.stderr.write(
+        "agentapi new-conversation returned unexpected JSON "
+        f"({type(data).__name__}); no conversation ID found.\n"
+    )
+    return None
+
+
+def resolve_match_expression(target_window: str) -> str:
+    """Validates an anchor window reference and returns a Kitty match expression.
+
+    Kitty's --match accepts regular expressions and boolean operators, and the
+    special value "all". Interpolating an unvalidated string would let a caller
+    widen the match from one window to many, and `launch` would then act on an
+    unintended window. Only a bare integer or an explicit "id:<int>" is allowed.
+
+    Args:
+        target_window: Anchor window reference (e.g. "14" or "id:14").
+
+    Returns:
+        A narrow match expression of the form "id:<int>".
+
+    Raises:
+        ValueError: If the reference is not a plain integer window ID.
+    """
+    candidate = target_window.strip()
+    if candidate.startswith("id:"):
+        candidate = candidate[len("id:") :]
+    if not re.fullmatch(r"\d+", candidate):
+        raise ValueError(
+            f"Invalid target window {target_window!r}: expected an integer "
+            'window ID such as "14" or "id:14".'
+        )
+    return f"id:{candidate}"
 
 
 def dispatch_to_kitty(
     *,
-    command_str: str,
+    command_args: Sequence[str],
     title: str,
     dispatch_mode: str = "tab",
     target_window: str | None = None,
@@ -167,10 +212,11 @@ def dispatch_to_kitty(
     """Executes kitty @ launch to create a tab or split window running the agent.
 
     Args:
-        command_str: The shell command to run inside the Kitty window.
+        command_args: Argument vector to run inside the Kitty window. Passed to
+            Kitty verbatim; Kitty execs it directly, without a shell.
         title: Name for the tab or window.
         dispatch_mode: One of 'tab', 'split-v', 'split-h', 'overlay', 'os-window'.
-        target_window: Anchor window ID or match string for splitting.
+        target_window: Anchor window ID for split and overlay modes.
         cwd: Working directory for the new window.
         detached: If True, passes --keep-focus to avoid stealing focus.
         dry_run: If True, returns planned commands without running.
@@ -178,14 +224,20 @@ def dispatch_to_kitty(
 
     Returns:
         Mapping containing target identifiers and execution status.
+
+    Raises:
+        ValueError: If the dispatch mode or target window is invalid.
+        RuntimeError: If the Kitty launch command fails.
     """
+    if not command_args:
+        raise ValueError("command_args must contain at least the program name.")
+
     effective_cwd = str(cwd.resolve()) if cwd else os.getcwd()
-    base_cmd = ["kitty", "@"]
+    kitty_cmd = ["kitty", "@"]
     effective_socket = socket or os.environ.get("KITTY_LISTEN_ON")
     if effective_socket:
-        base_cmd.extend(["--to", effective_socket])
+        kitty_cmd.extend(["--to", effective_socket])
 
-    kitty_cmd = list(base_cmd)
     kitty_cmd.append("launch")
 
     if detached:
@@ -193,49 +245,32 @@ def dispatch_to_kitty(
 
     kitty_cmd.extend(["--cwd", effective_cwd])
 
+    anchored_modes = {
+        "split-v": ["--type=window", "--location=vsplit", f"--title={title}"],
+        "split-h": ["--type=window", "--location=hsplit", f"--title={title}"],
+        "overlay": ["--type=overlay", f"--title={title}"],
+    }
+
     if dispatch_mode == "tab":
         kitty_cmd.extend(["--type=tab", f"--tab-title={title}"])
-    elif dispatch_mode == "split-v":
-        kitty_cmd.extend(["--type=window", "--location=vsplit", f"--title={title}"])
+    elif dispatch_mode in anchored_modes:
+        kitty_cmd.extend(anchored_modes[dispatch_mode])
         if target_window:
-            target = (
-                f"id:{target_window}"
-                if not target_window.startswith("id:")
-                else target_window
-            )
-            kitty_cmd.extend(["--match", target])
-    elif dispatch_mode == "split-h":
-        kitty_cmd.extend(["--type=window", "--location=hsplit", f"--title={title}"])
-        if target_window:
-            target = (
-                f"id:{target_window}"
-                if not target_window.startswith("id:")
-                else target_window
-            )
-            kitty_cmd.extend(["--match", target])
-    elif dispatch_mode == "overlay":
-        kitty_cmd.extend(["--type=overlay", f"--title={title}"])
-        if target_window:
-            target = (
-                f"id:{target_window}"
-                if not target_window.startswith("id:")
-                else target_window
-            )
-            kitty_cmd.extend(["--match", target])
+            kitty_cmd.extend(["--match", resolve_match_expression(target_window)])
     elif dispatch_mode == "os-window":
         kitty_cmd.extend(["--type=os-window", f"--title={title}"])
     else:
         raise ValueError(f"Unknown dispatch mode: {dispatch_mode}")
 
-    # Pass command arguments
-    kitty_cmd.extend(shlex.split(command_str))
+    # Kitty treats everything after the options as the argv to exec.
+    kitty_cmd.extend(command_args)
 
     if dry_run:
         return {
             "status": "dry_run",
             "dispatch_mode": dispatch_mode,
             "command": shlex.join(kitty_cmd),
-            "inner_command": command_str,
+            "inner_command": shlex.join(command_args),
         }
 
     code, stdout, stderr = run_command_safely(kitty_cmd)
@@ -292,6 +327,10 @@ def parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--model",
         choices=["flash_lite", "flash", "pro"],
         help="Model tier for the session.",
+    )
+    parser.add_argument(
+        "--profile",
+        help="Execution profile, forwarded to agentapi with --method=api.",
     )
     parser.add_argument(
         "--mode",
@@ -358,6 +397,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 1
 
+    # agy takes its task from the resumed session, so a prompt given alongside
+    # them would be dropped on the floor. Say so instead of silently ignoring it.
+    if args.prompt and (args.conversation or args.continue_recent):
+        resume_flag = "--conversation" if args.conversation else "--continue"
+        sys.stderr.write(
+            f"Error: --prompt cannot be combined with {resume_flag}; the "
+            "resumed session supplies its own context. Send a follow-up with "
+            "'kitty @ send-text' once the session is up.\n"
+        )
+        return 1
+
+    if args.profile and args.method != "api":
+        sys.stderr.write("Error: --profile requires --method=api.\n")
+        return 1
+
     title = args.title
     if not title:
         if args.prompt:
@@ -368,21 +422,29 @@ def main(argv: Sequence[str] | None = None) -> int:
             title = "agy-session"
 
     conv_id = args.conversation
-    if args.method == "api" and args.prompt and not conv_id and not args.dry_run:
-        conv_id = create_api_conversation(
-            prompt=args.prompt,
-            title=title,
-            model=args.model,
-            cwd=args.cwd,
-        )
-        if not conv_id:
-            return 1
+    if args.method == "api" and args.prompt and not conv_id:
+        if args.dry_run:
+            # Keep the planned command shaped like the real one rather than
+            # emitting a bare, prompt-less `agy`.
+            conv_id = "<conversation-id-from-agentapi>"
+        else:
+            conv_id = create_api_conversation(
+                prompt=args.prompt,
+                title=title,
+                model=args.model,
+                profile=args.profile,
+                cwd=args.cwd,
+            )
+            if not conv_id:
+                return 1
 
     agent_cmd = build_agent_command(
         prompt=args.prompt if args.method != "api" else None,
         conversation_id=conv_id,
         agent_name=args.agent,
-        model=args.model,
+        # In api mode the model was already bound to the conversation; repeating
+        # it on the agy side would send a second, possibly conflicting override.
+        model=args.model if args.method != "api" else None,
         continue_recent=args.continue_recent,
     )
 
@@ -390,7 +452,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         res = dispatch_to_kitty(
-            command_str=agent_cmd,
+            command_args=agent_cmd,
             title=title,
             dispatch_mode=args.mode,
             target_window=target_window,
