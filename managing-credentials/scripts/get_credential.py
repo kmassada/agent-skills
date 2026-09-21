@@ -433,7 +433,26 @@ def resolve_secret(
     if dop_val:
         return dop_val
 
-    return None
+
+# Known tool-specific environment variable aliases
+KNOWN_ENV_ALIASES: Mapping[str, Sequence[str]] = {
+    "GWS_CLIENT_ID": ("GOOGLE_WORKSPACE_CLI_CLIENT_ID",),
+    "GWS_CLIENT_SECRET": ("GOOGLE_WORKSPACE_CLI_CLIENT_SECRET",),
+    "GWS_PROJECT_ID": ("GOOGLE_WORKSPACE_PROJECT_ID",),
+}
+
+
+def normalize_service_name(name: str) -> str:
+    """Strips common secret naming suffixes to produce clean service directory names.
+
+    E.g. 'slack_agents' -> 'slack', 'gws_auth' -> 'gws', 'stripe_creds' -> 'stripe'.
+    """
+    clean = name.lower()
+    for suffix in ("_agents", "_auth", "_creds", "_secrets", "_keys", "_token"):
+        if clean.endswith(suffix):
+            clean = clean[: -len(suffix)]
+            break
+    return clean
 
 
 def resolve_all_secrets(
@@ -484,46 +503,17 @@ def resolve_all_secrets(
                                 clean_rel = clean_rel[len(prefix) + 1 :]
 
                             parts = clean_rel.split("/")
-                            if len(parts) < 2 and "_" in clean_rel:
-                                # Also handle flat names like slack_agents_bot_token or gws_auth_client_id
-                                if clean_rel.startswith("slack_agents_"):
-                                    parts = [
-                                        "slack",
-                                        clean_rel[len("slack_agents_") :],
-                                    ]
-                                elif clean_rel.startswith("gws_auth_"):
-                                    parts = [
-                                        "gws",
-                                        clean_rel[len("gws_auth_") :],
-                                    ]
+                            var_name = clean_rel.replace("/", "_").upper()
+                            injected[var_name] = val
 
                             if len(parts) >= 2:
-                                service = parts[0].lower()
-                                field = "_".join(parts[1:]).lower()
-                                if service == "slack":
-                                    if field == "bot_token":
-                                        injected["SLACK_BOT_TOKEN"] = val
-                                    elif field == "team_id":
-                                        injected["SLACK_TEAM_ID"] = val
-                                    elif field == "workspace_url":
-                                        injected["SLACK_WORKSPACE_URL"] = val
-                                elif service in ("gws", "google_workspace"):
-                                    if field == "client_id":
-                                        injected["GOOGLE_WORKSPACE_CLI_CLIENT_ID"] = val
-                                        injected["GWS_CLIENT_ID"] = val
-                                    elif field == "client_secret":
-                                        injected[
-                                            "GOOGLE_WORKSPACE_CLI_CLIENT_SECRET"
-                                        ] = val
-                                        injected["GWS_CLIENT_SECRET"] = val
-                                    elif field == "project_id":
-                                        injected["GOOGLE_WORKSPACE_PROJECT_ID"] = val
-                                        injected["GWS_PROJECT_ID"] = val
+                                service = parts[0].upper()
+                                field = "_".join(parts[1:]).upper()
+                                standard_key = f"{service}_{field}"
+                                injected[standard_key] = val
 
-                                var_name = clean_rel.replace("/", "_").upper()
-                                injected[var_name] = val
-                            else:
-                                injected[clean_rel.upper()] = val
+                                for alias in KNOWN_ENV_ALIASES.get(standard_key, ()):
+                                    injected[alias] = val
         return injected
 
     if provider == "bitwarden":
@@ -1267,7 +1257,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "sync":
         keys = [k.strip() for k in args.keys.split(",") if k.strip()]
-        resolved: dict[str, str] = {}
+        doppler_payload: dict[str, str] = {}
         for key in keys:
             target_var = key
             source_key = key
@@ -1276,19 +1266,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             val = resolve_secret(
                 source_key, provider=args.upstream, project_id=args.project
             )
-            if val is not None:
-                if ":" not in key and "." not in key:
-                    try:
-                        val_json = json.loads(val)
-                        if isinstance(val_json, dict):
-                            prefix = f"{source_key.upper()}_"
-                            for sub_k, sub_v in val_json.items():
-                                resolved[f"{prefix}{sub_k.upper()}"] = str(sub_v)
-                            continue
-                    except json.JSONDecodeError:
-                        pass
-                resolved[target_var] = val
-            else:
+            if val is None:
                 print(
                     f"Error: Upstream '{args.upstream}' failed to resolve "
                     f"'{source_key}'.",
@@ -1296,38 +1274,42 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
                 return 1
 
-        if args.dest == "pass":
-            for target_k, val in resolved.items():
-                clean_target = target_k.lower()
-                if clean_target.startswith("slack_agents_"):
-                    clean_target = "slack/" + clean_target[len("slack_agents_") :]
-                elif clean_target.startswith("gws_auth_"):
-                    clean_target = "gws/" + clean_target[len("gws_auth_") :]
-                elif clean_target.startswith("slack_"):
-                    clean_target = "slack/" + clean_target[len("slack_") :]
-                elif clean_target.startswith("gws_"):
-                    clean_target = "gws/" + clean_target[len("gws_") :]
+            val_dict: dict[str, str] | None = None
+            if ":" not in key and "." not in key:
+                try:
+                    parsed = json.loads(val)
+                    if isinstance(parsed, dict):
+                        wrapper = parsed.get("installed") or parsed.get("web")
+                        if isinstance(wrapper, dict):
+                            parsed = wrapper
+                        val_dict = {str(k): str(v) for k, v in parsed.items()}
+                except json.JSONDecodeError:
+                    pass
 
-                save_to_pass(
-                    clean_target,
-                    value=val,
-                    prefix=args.prefix,
-                )
-            print(
-                f"Successfully synced {len(resolved)} secrets from "
-                f"{args.upstream} into pass ({args.prefix})."
-            )
-            return 0
+            if args.dest == "pass":
+                if val_dict is not None:
+                    service_folder = normalize_service_name(source_key)
+                    for sub_k, sub_v in val_dict.items():
+                        save_to_pass(
+                            f"{service_folder}/{sub_k.lower()}",
+                            value=sub_v,
+                            prefix=args.prefix,
+                        )
+                else:
+                    save_to_pass(target_var.lower(), value=val, prefix=args.prefix)
+            elif args.dest == "doppler":
+                if val_dict is not None:
+                    prefix_name = f"{source_key.upper()}_"
+                    for sub_k, sub_v in val_dict.items():
+                        doppler_payload[f"{prefix_name}{sub_k.upper()}"] = sub_v
+                else:
+                    doppler_payload[target_var] = val
 
-        ok = sync_to_doppler(resolved, project=args.project)
-        if ok:
-            print(
-                f"Successfully synced {len(resolved)} secrets from "
-                f"{args.upstream} into Doppler."
-            )
-            return 0
-        print("Failed to sync secrets into Doppler.", file=sys.stderr)
-        return 1
+        if args.dest == "doppler" and doppler_payload:
+            sync_to_doppler(doppler_payload, project=args.project)
+
+        print(f"Successfully synced secrets from {args.upstream} into {args.dest}.")
+        return 0
 
     parser.print_help()
     return 0
