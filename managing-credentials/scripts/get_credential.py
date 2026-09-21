@@ -55,73 +55,78 @@ def resolve_from_bitwarden(
             except OSError:
                 pass
 
+    # Support dot-notation (e.g., "gws_auth.client_id" or "slack_agents.bot_token")
+    secret_key = secret_name
+    field_path: list[str] = []
+
+    if "." in secret_name and not item_name:
+        parts = secret_name.split(".")
+        secret_key = parts[0]
+        field_path = parts[1:]
+    elif item_name:
+        secret_key = item_name
+        field_path = [secret_name]
+
     # Check Bitwarden Secrets Manager (bws)
     if shutil.which("bws") and os.environ.get("BWS_ACCESS_TOKEN"):
         try:
-            # 1. Try direct secret get
-            res = subprocess.run(
-                ["bws", "secret", "get", target],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            if res.returncode == 0 and res.stdout.strip():
-                data = json.loads(res.stdout)
-                val_raw = str(data.get("value", ""))
-                try:
-                    val_json = json.loads(val_raw)
-                    if isinstance(val_json, dict):
-                        for k, v in val_json.items():
-                            if k.upper() in (
-                                secret_name.upper(),
-                                secret_name.upper().replace("SLACK_", "").lower(),
-                            ):
-                                return str(v)
-                except json.JSONDecodeError:
-                    return val_raw
-
-            # 2. Check candidate service secrets if target is a subfield
-            candidates = [target]
-            if "SLACK" in secret_name.upper():
-                candidates.extend(["slack_agents", "slack"])
-            if any(k in secret_name.upper() for k in ("WORKSPACE", "GWS", "GOOGLE")):
-                candidates.extend(["gws_auth", "google_workspace", "gws"])
-            if item_name:
-                candidates.insert(0, item_name)
-
             proj_id = os.environ.get("BWS_PROJECT_ID")
             list_cmd = ["bws", "secret", "list"] + ([proj_id] if proj_id else [])
             list_res = subprocess.run(
                 list_cmd, capture_output=True, text=True, check=False
             )
             if list_res.returncode == 0 and list_res.stdout.strip():
-                secrets_list = json.loads(list_res.stdout)
+                try:
+                    parsed_output = json.loads(list_res.stdout)
+                except json.JSONDecodeError:
+                    parsed_output = []
+
+                if isinstance(parsed_output, dict):
+                    secrets_list = [parsed_output]
+                elif isinstance(parsed_output, list):
+                    secrets_list = [s for s in parsed_output if isinstance(s, dict)]
+                else:
+                    secrets_list = []
+
+                # 1. Match secret by key name (case-insensitive)
                 for sec in secrets_list:
-                    sec_key = sec.get("key", "").lower()
-                    if any(cand.lower() == sec_key for cand in candidates):
-                        sec_val = sec.get("value", "")
-                        try:
-                            val_json = json.loads(sec_val)
-                            if isinstance(val_json, dict):
-                                # Check exact or normalized keys
-                                clean_name = (
-                                    secret_name.lower()
-                                    .replace("slack_", "")
-                                    .replace("google_workspace_", "")
-                                    .replace("cli_", "")
-                                )
-                                norm_keys = [
-                                    secret_name.upper(),
-                                    secret_name.lower(),
-                                    clean_name.upper(),
-                                    clean_name.lower(),
-                                ]
-                                for k, v in val_json.items():
-                                    if k.upper() in norm_keys or k.lower() in norm_keys:
-                                        return str(v)
-                        except json.JSONDecodeError:
-                            if sec_key == secret_name.lower():
-                                return str(sec_val)
+                    if sec.get("key", "").lower() == secret_key.lower():
+                        raw_val = str(sec.get("value", ""))
+                        if field_path:
+                            try:
+                                curr = json.loads(raw_val)
+                                for segment in field_path:
+                                    if isinstance(curr, dict):
+                                        matched = next(
+                                            (
+                                                v
+                                                for k, v in curr.items()
+                                                if k.lower() == segment.lower()
+                                            ),
+                                            None,
+                                        )
+                                        curr = matched
+                                    else:
+                                        curr = None
+                                        break
+                                if curr is not None:
+                                    return str(curr)
+                            except json.JSONDecodeError:
+                                pass
+                        else:
+                            return raw_val
+
+                # 2. If not found by secret key name, scan all JSON payloads for the field
+                for sec in secrets_list:
+                    sec_val = sec.get("value", "")
+                    try:
+                        val_json = json.loads(sec_val)
+                        if isinstance(val_json, dict):
+                            for k, v in val_json.items():
+                                if k.lower() == secret_name.lower():
+                                    return str(v)
+                    except json.JSONDecodeError:
+                        pass
         except (subprocess.SubprocessError, json.JSONDecodeError, OSError):
             pass
 
@@ -193,8 +198,10 @@ def resolve_from_bitwarden(
 def resolve_from_gcp(secret_name: str, project_id: str | None = None) -> str | None:
     """Retrieves a secret from Google Cloud Secret Manager via gcloud CLI.
 
+    Supports dot-path notation for structured JSON payloads (e.g., 'gws_auth.client_id').
+
     Args:
-        secret_name: The name of the secret in GCP Secret Manager.
+        secret_name: The name of the secret in GCP Secret Manager (or dot-path).
         project_id: Optional GCP Project ID.
 
     Returns:
@@ -203,13 +210,20 @@ def resolve_from_gcp(secret_name: str, project_id: str | None = None) -> str | N
     if not shutil.which("gcloud"):
         return None
 
+    secret_key = secret_name
+    field_path: list[str] = []
+    if "." in secret_name:
+        parts = secret_name.split(".")
+        secret_key = parts[0]
+        field_path = parts[1:]
+
     cmd = [
         "gcloud",
         "secrets",
         "versions",
         "access",
         "latest",
-        f"--secret={secret_name}",
+        f"--secret={secret_key}",
     ]
     if project_id:
         cmd.append(f"--project={project_id}")
@@ -217,7 +231,30 @@ def resolve_from_gcp(secret_name: str, project_id: str | None = None) -> str | N
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if res.returncode == 0 and res.stdout.strip():
-            return res.stdout.strip()
+            raw_val = res.stdout.strip()
+            if field_path:
+                try:
+                    curr = json.loads(raw_val)
+                    for segment in field_path:
+                        if isinstance(curr, dict):
+                            matched = next(
+                                (
+                                    v
+                                    for k, v in curr.items()
+                                    if k.lower() == segment.lower()
+                                ),
+                                None,
+                            )
+                            curr = matched
+                        else:
+                            curr = None
+                            break
+                    if curr is not None:
+                        return str(curr)
+                except json.JSONDecodeError:
+                    pass
+            else:
+                return raw_val
     except (subprocess.SubprocessError, OSError):
         pass
 

@@ -34,16 +34,25 @@ class TestGetCredential(unittest.TestCase):
         self, mock_run: mock.MagicMock, mock_which: mock.MagicMock
     ) -> None:
         mock_run.return_value = mock.MagicMock(
-            returncode=0, stdout=json.dumps({"value": "secret_bws_val"})
+            returncode=0,
+            stdout=json.dumps([{"key": "MY_SECRET", "value": "secret_bws_val"}]),
         )
         val = resolve_from_bitwarden("MY_SECRET")
         self.assertEqual(val, "secret_bws_val")
-        mock_run.assert_called_once_with(
-            ["bws", "secret", "get", "MY_SECRET"],
-            capture_output=True,
-            text=True,
-            check=False,
+
+    @mock.patch("shutil.which", return_value="/usr/local/bin/bws")
+    @mock.patch.dict(os.environ, {"BWS_ACCESS_TOKEN": "token-123"})
+    @mock.patch("subprocess.run")
+    def test_resolve_from_bitwarden_bws_dot_path(
+        self, mock_run: mock.MagicMock, mock_which: mock.MagicMock
+    ) -> None:
+        payload = json.dumps({"client_id": "test-id-123", "client_secret": "test-sec"})
+        mock_run.return_value = mock.MagicMock(
+            returncode=0,
+            stdout=json.dumps([{"key": "gws_auth", "value": payload}]),
         )
+        val = resolve_from_bitwarden("gws_auth.client_id")
+        self.assertEqual(val, "test-id-123")
 
     @mock.patch("shutil.which")
     @mock.patch("subprocess.run")
