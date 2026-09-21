@@ -1,7 +1,8 @@
 # Local Credential Architecture & Operations Guide
 
 This document details the mental model, security invariants, synchronization
-pipeline, and disaster recovery workflows for local credential management.
+pipeline, cross-platform keyring configurations, and disaster recovery
+workflows for local credential management across macOS and Linux.
 
 ---
 
@@ -43,7 +44,7 @@ pipeline, and disaster recovery workflows for local credential management.
   servers, and shell scripts read from this local cache. They execute instantly
   with zero cloud API latency and work offline.
 
-* **Disposable Nature:** If your local machine GPG keys or keychain are ever
+* **Disposable Nature:** If your local machine GPG keys or keyring are ever
   corrupted, you can delete `~/.password-store` with zero data loss and
   re-hydrate from Bitwarden in 5 seconds.
 
@@ -85,36 +86,70 @@ transformed into uppercase environment variables for child processes:
 
 ---
 
-## 3. macOS Keychain & GPG-Agent Bridge
+## 3. OS Keyring & GPG-Agent Bridge (macOS & Linux)
 
 To prevent background AI agents from being blocked by GUI password prompts,
-`pinentry-mac` integrates with the macOS Login Keychain:
+the GPG agent bridges to native operating system keyrings:
 
-1. **GPG Key Protection:** The local GPG private key is protected with a
-   passphrase stored in macOS Keychain (`~/Library/Keychains/login.keychain-db`).
+### A. macOS (Apple Login Keychain)
 
-2. **Access Control:** The `GnuPG` keychain entry is set to
-   `Allow all applications to access this item`.
+* **Keyring Engine:** Apple Login Keychain (`login.keychain-db`).
+* **Pinentry Program:** `pinentry-mac`.
+* **Access Control:** Set the `GnuPG` keychain entry to
+  `Allow all applications to access this item`.
+* **Behavior:** Unlocks automatically when you log into your Mac. Subsequent
+  agent operations run with **zero prompts**.
 
-3. **Session Caching:** `gpg-agent` maintains an in-memory cache
-   (`default-cache-ttl 86400` / 24 hours), enabling silent, friction-free
-   execution for all sub-agents and child processes.
+### B. Linux Desktop (GNOME Keyring / KWallet)
+
+* **Keyring Engine:** GNOME Keyring / KWallet via Secret Service API.
+* **Pinentry Program:** `pinentry-gnome3` or `pinentry-qt`.
+* **Behavior:** PAM unlocks the keyring on desktop login. On first prompt,
+  check "Automatically unlock this key whenever I'm logged in" to enable
+  **zero prompt** background execution.
+
+### C. Headless Linux / Server / SSH / Docker Containers
+
+* **Keyring Engine:** `gpg-agent` in-memory cache or disposable key.
+* **Pinentry Program:** `pinentry-curses` or loopback.
+* **Behavior:**
+  * *Option 1 (24-hr cache):* Prompt once per day in terminal; cached in RAM.
+  * *Option 2 (Disposable Container Key):* Generate the local container key with
+    `%no-protection` for 100% automated headless runners.
 
 ---
 
 ## 4. Disaster Recovery & Fresh Machine Bootstrapping
 
-If setting up a brand new computer or recovering from a wiped drive:
+If setting up a brand new machine or recovering from a wiped drive:
 
 ### Step 1: Install Prerequisites
 
+#### On macOS (Homebrew + BWS installer)
+
 ```bash
-brew install pass gnupg pinentry-mac bws
+brew install pass gnupg pinentry-mac
+curl -sSL https://bws.bitwarden.com/install | sh -s -- --install-dir ~/.local/bin
 ```
 
-### Step 2: Configure GPG Agent for macOS
+#### On Linux (apt / dnf + BWS installer)
 
-Create `~/.gnupg/gpg-agent.conf`:
+```bash
+# Debian / Ubuntu:
+sudo apt update && sudo apt install -y pass gnupg pinentry-gnome3
+
+# Fedora / RHEL:
+sudo dnf install -y pass gnupg2 pinentry-gnome3
+
+# Bitwarden Secrets Manager CLI:
+curl -sSL https://bws.bitwarden.com/install | sh -s -- --install-dir ~/.local/bin
+```
+
+### Step 2: Configure GPG Agent
+
+Create or update `~/.gnupg/gpg-agent.conf`:
+
+#### macOS
 
 ```conf
 pinentry-program /opt/homebrew/bin/pinentry-mac
@@ -122,7 +157,15 @@ default-cache-ttl 86400
 max-cache-ttl 604800
 ```
 
-Restart agent:
+#### Linux Desktop
+
+```conf
+pinentry-program /usr/bin/pinentry-gnome3
+default-cache-ttl 86400
+max-cache-ttl 604800
+```
+
+Restart the agent:
 
 ```bash
 gpgconf --kill gpg-agent
@@ -131,7 +174,7 @@ gpgconf --kill gpg-agent
 ### Step 3: Initialize Local Password Store
 
 ```bash
-# Generate local GPG key for pass
+# Generate local disposable GPG key for pass
 gpg --batch --gen-key <<EOF
 Key-Type: EDDSA
 Key-Curve: ed25519
@@ -150,13 +193,13 @@ pass init agent-user@local
 
 ### Step 4: Hydrate from Bitwarden
 
-1. Copy your `BWS_ACCESS_TOKEN` once from your Bitwarden Vault app or browser.
+1. Copy your `BWS_ACCESS_TOKEN` once from your Bitwarden web vault or app.
 
-2. Store the token into `pass`:
+2. Store the token into `pass` (enter via hidden input):
 
    ```bash
-   cred set bitwarden/access_token "0.xxxx..."
-   cred set bitwarden/project_id "your-bws-project-id"
+   cred set bitwarden/access_token
+   cred set bitwarden/project_id
    ```
 
 3. Sync all secrets into `pass`:
@@ -165,7 +208,7 @@ pass init agent-user@local
    cred sync --upstream bitwarden --dest pass
    ```
 
-All secrets are now hydrated locally, encrypted, and ready for agents.
+All secrets are now hydrated locally, encrypted in `pass`, and ready for agents.
 
 ---
 
