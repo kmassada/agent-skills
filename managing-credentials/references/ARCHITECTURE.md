@@ -186,10 +186,10 @@ gpgconf --kill gpg-agent
 
 ### Step 3: Initialize Local Password Store
 
-Choose a key type deliberately — this decides what "encrypted at rest" actually
+Choose a key type deliberately -- this decides what "encrypted at rest" actually
 buys you.
 
-#### Desktop (macOS / Linux) — passphrase-protected key
+#### Desktop (macOS / Linux) -- passphrase-protected key
 
 This is the default you want on any machine you carry. The passphrase is cached
 by the OS keyring via the pinentry configured in Step 2, so background agents
@@ -203,7 +203,7 @@ gpg --full-generate-key --expert
 pass init agent-user@local
 ```
 
-#### Headless / CI / container — unprotected key
+#### Headless / CI / container -- unprotected key
 
 ```bash
 # Disposable container key: no passphrase, for automated runners only
@@ -223,14 +223,15 @@ pass init agent-user@local
 ```
 
 > **What `%no-protection` costs you.** The private key sits unencrypted in
-> `~/.gnupg`. Anything that can read that directory — a process running as you,
-> a Time Machine or `rsync` backup, a stolen unlocked disk image — decrypts the
+> `~/.gnupg`. Anything that can read that directory -- a process running as you,
+> a Time Machine or `rsync` backup, a stolen unlocked disk image -- decrypts the
 > entire store. The store is then obfuscated at rest, not encrypted against a
 > local attacker. That is an acceptable trade for a disposable runner that holds
 > scoped credentials and is rebuilt from upstream; it is a poor one for a laptop.
-> Note also that the macOS "Allow all applications to access this item" Keychain
-> ACL in §3A grants every local process access to the cached passphrase — prefer
-> leaving the ACL prompting per-application if you can tolerate the first prompt.
+> Note also that the macOS "Allow all applications to access this item"
+> Keychain ACL in Section 3A grants every local process access to the cached
+> passphrase -- prefer leaving the ACL prompting per-application if you can
+> tolerate the first prompt.
 
 ### Step 3b: Install the `cred` Command
 
