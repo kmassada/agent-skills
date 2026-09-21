@@ -42,19 +42,32 @@ def _load_bw_key_file() -> None:
             os.environ["BWS_PROJECT_ID"] = pass_proj
 
     if "BWS_ACCESS_TOKEN" not in os.environ:
-        bw_key_file = os.path.expanduser("~/.local/bw_key.zsh")
-        if os.path.exists(bw_key_file):
-            try:
-                with open(bw_key_file, encoding="utf-8") as f:
-                    for raw_line in f:
-                        clean_line = raw_line.strip()
-                        if clean_line.startswith("export "):
-                            clean_line = clean_line[7:].strip()
-                        if "=" in clean_line:
-                            k, _, v = clean_line.partition("=")
-                            os.environ[k.strip()] = v.strip().strip("'\"")
-            except OSError:
-                pass
+        fallback_files = (
+            os.path.expanduser("~/.local/bw_key.zsh"),
+            os.path.expanduser("~/.bw_key.zsh"),
+            os.path.expanduser("~/.bws_token"),
+            os.path.expanduser("~/.config/bws/token"),
+        )
+        for bw_key_file in fallback_files:
+            if os.path.exists(bw_key_file):
+                try:
+                    with open(bw_key_file, encoding="utf-8") as f:
+                        for raw_line in f:
+                            clean_line = raw_line.strip()
+                            if clean_line.startswith("export "):
+                                clean_line = clean_line[7:].strip()
+                            if "=" in clean_line:
+                                k, _, v = clean_line.partition("=")
+                                os.environ[k.strip()] = v.strip().strip("'\"")
+                            elif (
+                                clean_line.startswith("0.")
+                                and "BWS_ACCESS_TOKEN" not in os.environ
+                            ):
+                                os.environ["BWS_ACCESS_TOKEN"] = clean_line
+                    if "BWS_ACCESS_TOKEN" in os.environ:
+                        break
+                except OSError:
+                    pass
 
 
 def resolve_from_pass(secret_name: str, prefix: str = "ai-agents") -> str | None:
