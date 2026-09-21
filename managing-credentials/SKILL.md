@@ -93,7 +93,7 @@ python3 scripts/get_credential.py set slack/bot_token "xoxb-..."
 python3 scripts/get_credential.py list
 
 # Explicitly retrieve a single secret value
-python3 scripts/get_credential.py get slack_agents_bot_token
+python3 scripts/get_credential.py get slack/bot_token
 ```
 
 ---
@@ -104,11 +104,10 @@ When bootstrapping a new machine or syncing from your personal Bitwarden vault
 into local `pass`:
 
 ```bash
-# Sync Bitwarden secrets directly into local pass store
+# Sync all project secrets from Bitwarden into local pass store
 python3 scripts/get_credential.py sync \
   --upstream bitwarden \
-  --dest pass \
-  --keys slack_agents,gws_auth
+  --dest pass
 ```
 
 ---
