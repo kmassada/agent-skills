@@ -1298,8 +1298,18 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         if args.dest == "pass":
             for target_k, val in resolved.items():
+                clean_target = target_k.lower()
+                if clean_target.startswith("slack_agents_"):
+                    clean_target = "slack/" + clean_target[len("slack_agents_") :]
+                elif clean_target.startswith("gws_auth_"):
+                    clean_target = "gws/" + clean_target[len("gws_auth_") :]
+                elif clean_target.startswith("slack_"):
+                    clean_target = "slack/" + clean_target[len("slack_") :]
+                elif clean_target.startswith("gws_"):
+                    clean_target = "gws/" + clean_target[len("gws_") :]
+
                 save_to_pass(
-                    target_k.lower(),
+                    clean_target,
                     value=val,
                     prefix=args.prefix,
                 )
