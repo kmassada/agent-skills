@@ -13,6 +13,7 @@ without writing unencrypted plaintext files to disk.
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import os
 import shutil
@@ -1178,9 +1179,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
 
     if args.command == "set":
+        secret_val = args.value
+        if secret_val is None and not args.from_file:
+            if sys.stdin.isatty():
+                try:
+                    secret_val = getpass.getpass(
+                        f"Enter secret value for '{args.secret_name}' (hidden): "
+                    )
+                except (EOFError, KeyboardInterrupt):
+                    print("\nOperation cancelled.", file=sys.stderr)
+                    return 1
+            else:
+                secret_val = sys.stdin.read().rstrip("\r\n")
+
+            if not secret_val:
+                print("Error: No secret value provided.", file=sys.stderr)
+                return 1
+
         ok = save_secret(
             args.secret_name,
-            value=args.value,
+            value=secret_val,
             provider=args.provider,
             project_id=args.project,
             note=args.note,

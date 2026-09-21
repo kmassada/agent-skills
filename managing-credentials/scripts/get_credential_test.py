@@ -506,11 +506,40 @@ class TestGetCredential(unittest.TestCase):
     def test_list_secrets_pass(
         self, mock_run: mock.MagicMock, mock_which: mock.MagicMock
     ) -> None:
-
         mock_run.return_value = mock.MagicMock(returncode=0)
         code = list_secrets(provider="pass")
         self.assertEqual(code, 0)
         mock_run.assert_called_once_with(["pass", "ls", "ai-agents"], check=False)
+
+    @mock.patch("getpass.getpass", return_value="hidden_secret_val")
+    @mock.patch("sys.stdin.isatty", return_value=True)
+    @mock.patch("get_credential.save_secret", return_value=True)
+    def test_main_set_hidden_prompt(
+        self,
+        mock_save: mock.MagicMock,
+        mock_isatty: mock.MagicMock,
+        mock_getpass: mock.MagicMock,
+    ) -> None:
+        code = main(["set", "slack/bot_token", "--provider", "pass"])
+        self.assertEqual(code, 0)
+        mock_getpass.assert_called_once()
+        mock_save.assert_called_once()
+        self.assertEqual(mock_save.call_args[1]["value"], "hidden_secret_val")
+
+    @mock.patch("sys.stdin.isatty", return_value=False)
+    @mock.patch("sys.stdin.read", return_value="piped_secret_val\n")
+    @mock.patch("get_credential.save_secret", return_value=True)
+    def test_main_set_piped_stdin(
+        self,
+        mock_save: mock.MagicMock,
+        mock_read: mock.MagicMock,
+        mock_isatty: mock.MagicMock,
+    ) -> None:
+        code = main(["set", "slack/bot_token", "--provider", "pass"])
+        self.assertEqual(code, 0)
+        mock_read.assert_called_once()
+        mock_save.assert_called_once()
+        self.assertEqual(mock_save.call_args[1]["value"], "piped_secret_val")
 
 
 if __name__ == "__main__":
