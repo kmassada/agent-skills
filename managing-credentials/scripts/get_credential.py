@@ -580,11 +580,20 @@ def save_secret(
         if not shutil.which("doppler"):
             print("Error: doppler CLI is not installed.", file=sys.stderr)
             return False
-        cmd = ["doppler", "secrets", "set", f"{target_key}={value}"]
-        if project_id:
-            cmd.extend(["--project", project_id])
-        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        return res.returncode == 0
+
+        # If value is JSON dict, unpack all fields into Doppler
+        secrets_to_set: dict[str, str] = {}
+        try:
+            val_json = json.loads(value)
+            if isinstance(val_json, dict):
+                for k, v in val_json.items():
+                    secrets_to_set[f"{target_key.upper()}_{k.upper()}"] = str(v)
+            else:
+                secrets_to_set[target_key] = value
+        except json.JSONDecodeError:
+            secrets_to_set[target_key] = value
+
+        return sync_to_doppler(secrets_to_set, project=project_id)
 
     return False
 
@@ -759,12 +768,30 @@ def main(argv: Sequence[str] | None = None) -> int:
         keys = [k.strip() for k in args.keys.split(",") if k.strip()]
         resolved: dict[str, str] = {}
         for key in keys:
-            val = resolve_secret(key, provider=args.upstream, project_id=args.project)
+            target_var = key
+            source_key = key
+            if ":" in key:
+                target_var, _, source_key = key.partition(":")
+            val = resolve_secret(
+                source_key, provider=args.upstream, project_id=args.project
+            )
             if val is not None:
-                resolved[key] = val
+                # If secret is full JSON without dot-path or destination mapping, unpack all
+                if ":" not in key and "." not in key:
+                    try:
+                        val_json = json.loads(val)
+                        if isinstance(val_json, dict):
+                            prefix = f"{source_key.upper()}_"
+                            for sub_k, sub_v in val_json.items():
+                                resolved[f"{prefix}{sub_k.upper()}"] = str(sub_v)
+                            continue
+                    except json.JSONDecodeError:
+                        pass
+                resolved[target_var] = val
             else:
                 print(
-                    f"Error: Upstream '{args.upstream}' failed to resolve '{key}'.",
+                    f"Error: Upstream '{args.upstream}' failed to resolve "
+                    f"'{source_key}'.",
                     file=sys.stderr,
                 )
                 return 1

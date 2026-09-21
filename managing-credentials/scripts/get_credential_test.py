@@ -354,19 +354,40 @@ class TestGetCredential(unittest.TestCase):
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
 
-    @mock.patch("get_credential.save_secret", return_value=True)
-    def test_main_set(self, mock_save: mock.MagicMock) -> None:
-        code = main(["set", "my_secret", "my_val", "--provider", "bitwarden"])
-        self.assertEqual(code, 0)
-        mock_save.assert_called_once_with(
-            "my_secret",
-            value="my_val",
-            provider="bitwarden",
-            project_id=None,
-            note=None,
-            from_file=None,
-            delete_after=False,
+    @mock.patch("shutil.which", return_value="/usr/local/bin/doppler")
+    @mock.patch("get_credential.sync_to_doppler", return_value=True)
+    def test_save_secret_doppler_json(
+        self, mock_sync: mock.MagicMock, mock_which: mock.MagicMock
+    ) -> None:
+        ok = save_secret(
+            "slack",
+            value=json.dumps({"token": "xoxb-1", "team": "T1"}),
+            provider="doppler",
         )
+        self.assertTrue(ok)
+        mock_sync.assert_called_once_with(
+            {"SLACK_TOKEN": "xoxb-1", "SLACK_TEAM": "T1"}, project=None
+        )
+
+    @mock.patch("get_credential.resolve_secret", return_value="my_val")
+    @mock.patch("get_credential.sync_to_doppler", return_value=True)
+    def test_main_sync_with_destination_mapping(
+        self, mock_sync: mock.MagicMock, mock_resolve: mock.MagicMock
+    ) -> None:
+        code = main(
+            [
+                "sync",
+                "--upstream",
+                "bitwarden",
+                "--keys",
+                "MY_CUSTOM_VAR:gws_auth.client_id",
+            ]
+        )
+        self.assertEqual(code, 0)
+        mock_resolve.assert_called_once_with(
+            "gws_auth.client_id", provider="bitwarden", project_id=None
+        )
+        mock_sync.assert_called_once_with({"MY_CUSTOM_VAR": "my_val"}, project=None)
 
 
 if __name__ == "__main__":

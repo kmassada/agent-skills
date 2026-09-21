@@ -153,16 +153,19 @@ python3 scripts/get_credential.py sync \
 
 ### Option B: Bitwarden (Personal Vault / Cross-Device)
 
-Pull credentials from an unlocked Bitwarden session into Doppler:
+Pull credentials from Bitwarden Secrets Manager (`bws`) into Doppler, with
+support for structured JSON unpacking and explicit destination mapping:
 
 ```bash
-# Unlock session
-export BW_SESSION="$(bw unlock --raw)"
-
-# Sync into Doppler
+# Sync specific subfields with custom Doppler variable names
 python3 scripts/get_credential.py sync \
   --upstream bitwarden \
-  --keys "SLACK_BOT_TOKEN,SLACK_TEAM_ID"
+  --keys "SLACK_BOT_TOKEN:slack_agents.bot_token,SLACK_TEAM_ID:slack_agents.team_id"
+
+# Sync Google Workspace OAuth variables
+python3 scripts/get_credential.py sync \
+  --upstream bitwarden \
+  --keys "GOOGLE_WORKSPACE_PROJECT_ID:gws_auth.project_id,GOOGLE_WORKSPACE_CLI_CLIENT_ID:gws_auth.client_id,GOOGLE_WORKSPACE_CLI_CLIENT_SECRET:gws_auth.client_secret"
 ```
 
 ---
