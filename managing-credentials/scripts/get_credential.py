@@ -1309,8 +1309,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                     file=sys.stderr,
                 )
                 return 1
-            items = json.loads(res.stdout)
-            keys = [it["key"] for it in items if "key" in it]
+            try:
+                raw_items = json.loads(res.stdout)
+                items: Sequence[Mapping[str, object]] = (
+                    raw_items if isinstance(raw_items, list) else []
+                )
+            except json.JSONDecodeError:
+                items = []
+            keys = [
+                str(it["key"])
+                for it in items
+                if isinstance(it, Mapping) and "key" in it
+            ]
         else:
             print(
                 "Error: --keys is required for the specified upstream provider.",
