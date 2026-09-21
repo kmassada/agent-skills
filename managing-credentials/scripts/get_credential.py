@@ -25,6 +25,25 @@ class CredentialError(Exception):
     """Base exception for credential retrieval failures."""
 
 
+def _load_bw_key_file() -> None:
+    """Auto-loads ~/.local/bw_key.zsh into os.environ if present."""
+    if "BWS_ACCESS_TOKEN" in os.environ:
+        return
+    bw_key_file = os.path.expanduser("~/.local/bw_key.zsh")
+    if os.path.exists(bw_key_file):
+        try:
+            with open(bw_key_file, encoding="utf-8") as f:
+                for raw_line in f:
+                    clean_line = raw_line.strip()
+                    if clean_line.startswith("export "):
+                        clean_line = clean_line[7:].strip()
+                    if "=" in clean_line:
+                        k, _, v = clean_line.partition("=")
+                        os.environ[k.strip()] = v.strip().strip("'\"")
+        except OSError:
+            pass
+
+
 def resolve_from_bitwarden(
     secret_name: str, item_name: str | None = None
 ) -> str | None:
@@ -38,22 +57,7 @@ def resolve_from_bitwarden(
         Secret string if found, otherwise None.
     """
     target = item_name or secret_name
-
-    # Auto-load ~/.local/bw_key.zsh if BWS_ACCESS_TOKEN not in env
-    if "BWS_ACCESS_TOKEN" not in os.environ:
-        bw_key_file = os.path.expanduser("~/.local/bw_key.zsh")
-        if os.path.exists(bw_key_file):
-            try:
-                with open(bw_key_file, encoding="utf-8") as f:
-                    for raw_line in f:
-                        clean_line = raw_line.strip()
-                        if clean_line.startswith("export "):
-                            clean_line = clean_line[7:].strip()
-                        if "=" in clean_line:
-                            k, _, v = clean_line.partition("=")
-                            os.environ[k.strip()] = v.strip().strip("'\"")
-            except OSError:
-                pass
+    _load_bw_key_file()
 
     # Support dot-notation (e.g., "gws_auth.client_id" or "slack_agents.bot_token")
     secret_key = secret_name
@@ -381,6 +385,210 @@ def sync_to_doppler(
         return False
 
 
+def save_secret(
+    secret_name: str,
+    value: str | None = None,
+    provider: str = "bitwarden",
+    project_id: str | None = None,
+    note: str | None = None,
+    from_file: str | None = None,
+    delete_after: bool = False,
+) -> bool:
+    """Saves or updates a secret across vaults with structured JSON support.
+
+    Supports dot-path updates (e.g. 'slack_agents.bot_token'), local file
+    ingestion (OAuth client JSON, .env), and automatic post-ingestion purging.
+
+    Args:
+        secret_name: Name of the secret or dot-path.
+        value: Plaintext or JSON value to store.
+        provider: Target vault provider ('bitwarden', 'gcp', 'doppler').
+        project_id: Optional project UUID or project name.
+        note: Optional note / description for the secret.
+        from_file: Optional file path to ingest secret data from.
+        delete_after: Whether to delete the source file after ingestion.
+
+    Returns:
+        True if successfully saved, otherwise False.
+    """
+    if from_file:
+        resolved_path = os.path.expanduser(from_file)
+        if not os.path.exists(resolved_path):
+            print(f"Error: File not found: {from_file}", file=sys.stderr)
+            return False
+        try:
+            with open(resolved_path, encoding="utf-8") as f:
+                content = f.read().strip()
+            # Try JSON parsing
+            try:
+                parsed = json.loads(content)
+                if isinstance(parsed, dict):
+                    wrapper = parsed.get("installed") or parsed.get("web")
+                    if isinstance(wrapper, dict):
+                        data = {
+                            "service": "google_workspace",
+                            "project_id": wrapper.get("project_id", ""),
+                            "client_id": wrapper.get("client_id", ""),
+                            "client_secret": wrapper.get("client_secret", ""),
+                            "owner": os.environ.get("USER", "kmassada"),
+                            "environment": "dev",
+                        }
+                        value = json.dumps(data, indent=2)
+                    else:
+                        value = json.dumps(parsed, indent=2)
+                else:
+                    value = content
+            except json.JSONDecodeError:
+                # Parse .env / .zsh key=value lines
+                parsed_env: dict[str, str] = {}
+                for line in content.splitlines():
+                    clean_line = line.strip()
+                    if clean_line.startswith("export "):
+                        clean_line = clean_line[7:].strip()
+                    if "=" in clean_line:
+                        k, _, v = clean_line.partition("=")
+                        parsed_env[k.strip()] = v.strip().strip("'\"")
+                if parsed_env:
+                    value = json.dumps(parsed_env, indent=2)
+                else:
+                    value = content
+
+            if delete_after:
+                try:
+                    os.remove(resolved_path)
+                except OSError as exc:
+                    print(
+                        f"Warning: Could not delete {from_file}: {exc}",
+                        file=sys.stderr,
+                    )
+        except OSError as exc:
+            print(f"Error reading file {from_file}: {exc}", file=sys.stderr)
+            return False
+
+    if value is None:
+        print(
+            "Error: No value provided (provide value argument or --from-file).",
+            file=sys.stderr,
+        )
+        return False
+
+    # Handle dot-path updates (e.g., "slack_agents.bot_token")
+    if "." in secret_name:
+        parts = secret_name.split(".", 1)
+        secret_key = parts[0]
+        field_name = parts[1]
+
+        existing_val = resolve_secret(
+            secret_key, provider=provider, project_id=project_id
+        )
+        if existing_val:
+            try:
+                existing_dict = json.loads(existing_val)
+                if isinstance(existing_dict, dict):
+                    existing_dict[field_name] = value
+                    value = json.dumps(existing_dict, indent=2)
+                else:
+                    value = json.dumps({field_name: value}, indent=2)
+            except json.JSONDecodeError:
+                value = json.dumps({field_name: value}, indent=2)
+        else:
+            value = json.dumps({field_name: value}, indent=2)
+        target_key = secret_key
+    else:
+        target_key = secret_name
+
+    if provider == "bitwarden":
+        if not shutil.which("bws"):
+            print("Error: bws CLI is not installed.", file=sys.stderr)
+            return False
+        _load_bw_key_file()
+        if not os.environ.get("BWS_ACCESS_TOKEN"):
+            print("Error: BWS_ACCESS_TOKEN not set.", file=sys.stderr)
+            return False
+
+        proj = project_id or os.environ.get("BWS_PROJECT_ID")
+        if not proj:
+            print("Error: BWS_PROJECT_ID not set.", file=sys.stderr)
+            return False
+
+        list_res = subprocess.run(
+            ["bws", "secret", "list", proj],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        existing_id = None
+        if list_res.returncode == 0 and list_res.stdout.strip():
+            try:
+                secrets_list = json.loads(list_res.stdout)
+                if isinstance(secrets_list, list):
+                    for s in secrets_list:
+                        if (
+                            isinstance(s, dict)
+                            and s.get("key", "").lower() == target_key.lower()
+                        ):
+                            existing_id = s.get("id")
+                            break
+            except json.JSONDecodeError:
+                pass
+
+        if existing_id:
+            cmd = ["bws", "secret", "edit", existing_id, "--value", value]
+            if note:
+                cmd.extend(["--note", note])
+            res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            return res.returncode == 0
+        else:
+            cmd = ["bws", "secret", "create", target_key, value, proj]
+            if note:
+                cmd.extend(["--note", note])
+            res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            return res.returncode == 0
+
+    if provider == "gcp":
+        if not shutil.which("gcloud"):
+            print("Error: gcloud CLI is not installed.", file=sys.stderr)
+            return False
+        desc_cmd = ["gcloud", "secrets", "describe", target_key]
+        if project_id:
+            desc_cmd.append(f"--project={project_id}")
+        desc_res = subprocess.run(desc_cmd, capture_output=True, text=True, check=False)
+        if desc_res.returncode != 0:
+            create_cmd = [
+                "gcloud",
+                "secrets",
+                "create",
+                target_key,
+                "--replication-policy=automatic",
+            ]
+            if project_id:
+                create_cmd.append(f"--project={project_id}")
+            create_res = subprocess.run(
+                create_cmd, capture_output=True, text=True, check=False
+            )
+            if create_res.returncode != 0:
+                return False
+        add_cmd = ["gcloud", "secrets", "versions", "add", target_key, "--data-file=-"]
+        if project_id:
+            add_cmd.append(f"--project={project_id}")
+        add_res = subprocess.run(
+            add_cmd, input=value, text=True, capture_output=True, check=False
+        )
+        return add_res.returncode == 0
+
+    if provider == "doppler":
+        if not shutil.which("doppler"):
+            print("Error: doppler CLI is not installed.", file=sys.stderr)
+            return False
+        cmd = ["doppler", "secrets", "set", f"{target_key}={value}"]
+        if project_id:
+            cmd.extend(["--project", project_id])
+        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        return res.returncode == 0
+
+    return False
+
+
 def run_command_with_injected_secrets(
     cmd: Sequence[str], secrets: Mapping[str, str]
 ) -> int:
@@ -409,6 +617,27 @@ def main(argv: Sequence[str] | None = None) -> int:
         description="Multi-backend credential resolver and runtime injector."
     )
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
+
+    # set subcommand
+    set_parser = subparsers.add_parser("set", help="Save or update a secret in a vault")
+    set_parser.add_argument("secret_name", help="Name of the secret or dot-path")
+    set_parser.add_argument(
+        "value", nargs="?", default=None, help="Secret value or JSON payload"
+    )
+    set_parser.add_argument(
+        "--provider",
+        choices=["bitwarden", "gcp", "doppler"],
+        default="bitwarden",
+        help="Target vault provider (default: bitwarden)",
+    )
+    set_parser.add_argument("--project", help="Project ID or UUID")
+    set_parser.add_argument("--note", help="Optional description/note for secret")
+    set_parser.add_argument("--from-file", help="Ingest secret from JSON or .env file")
+    set_parser.add_argument(
+        "--delete-after",
+        action="store_true",
+        help="Securely delete source file after ingestion",
+    )
 
     # get subcommand
     get_parser = subparsers.add_parser("get", help="Retrieve a secret")
@@ -462,6 +691,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     sync_parser.add_argument("--project", help="GCP or Doppler Project ID")
 
     args = parser.parse_args(argv)
+
+    if args.command == "set":
+        ok = save_secret(
+            args.secret_name,
+            value=args.value,
+            provider=args.provider,
+            project_id=args.project,
+            note=args.note,
+            from_file=args.from_file,
+            delete_after=args.delete_after,
+        )
+        if ok:
+            print(f"Successfully saved secret '{args.secret_name}' to {args.provider}.")
+            return 0
+        print(
+            f"Error: Failed to save secret '{args.secret_name}' to {args.provider}.",
+            file=sys.stderr,
+        )
+        return 1
 
     if args.command == "get":
         val = resolve_secret(

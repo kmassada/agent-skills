@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import tempfile
 import unittest
 from unittest import mock
 
@@ -20,6 +21,7 @@ from get_credential import (
     resolve_from_gcp,
     resolve_secret,
     run_command_with_injected_secrets,
+    save_secret,
     sync_to_doppler,
 )
 
@@ -232,6 +234,138 @@ class TestGetCredential(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(
             mock_sync.call_args[0][0], {"KEY1": "synced_val", "KEY2": "synced_val"}
+        )
+
+    @mock.patch("shutil.which", return_value="/usr/local/bin/bws")
+    @mock.patch.dict(
+        os.environ, {"BWS_ACCESS_TOKEN": "token", "BWS_PROJECT_ID": "proj-1"}
+    )
+    @mock.patch("subprocess.run")
+    def test_save_secret_bws_new(
+        self, mock_run: mock.MagicMock, mock_which: mock.MagicMock
+    ) -> None:
+        mock_run.side_effect = [
+            mock.MagicMock(returncode=0, stdout="[]"),  # list secrets
+            mock.MagicMock(returncode=0, stdout=""),  # create secret
+        ]
+        ok = save_secret("NEW_KEY", "new_val", provider="bitwarden", note="Test note")
+        self.assertTrue(ok)
+        self.assertEqual(mock_run.call_count, 2)
+        mock_run.assert_called_with(
+            [
+                "bws",
+                "secret",
+                "create",
+                "NEW_KEY",
+                "new_val",
+                "proj-1",
+                "--note",
+                "Test note",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    @mock.patch("shutil.which", return_value="/usr/local/bin/bws")
+    @mock.patch.dict(
+        os.environ, {"BWS_ACCESS_TOKEN": "token", "BWS_PROJECT_ID": "proj-1"}
+    )
+    @mock.patch("subprocess.run")
+    def test_save_secret_bws_edit(
+        self, mock_run: mock.MagicMock, mock_which: mock.MagicMock
+    ) -> None:
+        mock_run.side_effect = [
+            mock.MagicMock(
+                returncode=0, stdout=json.dumps([{"id": "sec-123", "key": "MY_KEY"}])
+            ),
+            mock.MagicMock(returncode=0, stdout=""),
+        ]
+        ok = save_secret("MY_KEY", "updated_val", provider="bitwarden")
+        self.assertTrue(ok)
+        mock_run.assert_called_with(
+            ["bws", "secret", "edit", "sec-123", "--value", "updated_val"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    @mock.patch("shutil.which", return_value="/usr/local/bin/bws")
+    @mock.patch.dict(
+        os.environ, {"BWS_ACCESS_TOKEN": "token", "BWS_PROJECT_ID": "proj-1"}
+    )
+    @mock.patch(
+        "get_credential.resolve_secret", return_value=json.dumps({"old_k": "old_v"})
+    )
+    @mock.patch("subprocess.run")
+    def test_save_secret_dot_path(
+        self,
+        mock_run: mock.MagicMock,
+        mock_resolve: mock.MagicMock,
+        mock_which: mock.MagicMock,
+    ) -> None:
+        mock_run.side_effect = [
+            mock.MagicMock(
+                returncode=0, stdout=json.dumps([{"id": "sec-123", "key": "app_cfg"}])
+            ),
+            mock.MagicMock(returncode=0, stdout=""),
+        ]
+        ok = save_secret("app_cfg.new_k", "new_v", provider="bitwarden")
+        self.assertTrue(ok)
+        # Verify JSON was merged
+        edit_call_args = mock_run.call_args[0][0]
+        self.assertEqual(edit_call_args[0:4], ["bws", "secret", "edit", "sec-123"])
+        saved_json = json.loads(edit_call_args[5])
+        self.assertEqual(saved_json, {"old_k": "old_v", "new_k": "new_v"})
+
+    @mock.patch("shutil.which", return_value="/usr/local/bin/bws")
+    @mock.patch.dict(
+        os.environ, {"BWS_ACCESS_TOKEN": "token", "BWS_PROJECT_ID": "proj-1"}
+    )
+    @mock.patch("subprocess.run")
+    def test_save_secret_from_file_with_delete_after(
+        self, mock_run: mock.MagicMock, mock_which: mock.MagicMock
+    ) -> None:
+        mock_run.side_effect = [
+            mock.MagicMock(returncode=0, stdout="[]"),
+            mock.MagicMock(returncode=0, stdout=""),
+        ]
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as tmp:
+            tmp.write(
+                json.dumps(
+                    {
+                        "installed": {
+                            "client_id": "test.id",
+                            "client_secret": "test.secret",
+                            "project_id": "test-proj",
+                        }
+                    }
+                )
+            )
+            tmp_path = tmp.name
+
+        try:
+            ok = save_secret(
+                "gws_auth", provider="bitwarden", from_file=tmp_path, delete_after=True
+            )
+            self.assertTrue(ok)
+            self.assertFalse(os.path.exists(tmp_path))
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+
+    @mock.patch("get_credential.save_secret", return_value=True)
+    def test_main_set(self, mock_save: mock.MagicMock) -> None:
+        code = main(["set", "my_secret", "my_val", "--provider", "bitwarden"])
+        self.assertEqual(code, 0)
+        mock_save.assert_called_once_with(
+            "my_secret",
+            value="my_val",
+            provider="bitwarden",
+            project_id=None,
+            note=None,
+            from_file=None,
+            delete_after=False,
         )
 
 

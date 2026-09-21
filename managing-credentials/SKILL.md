@@ -101,7 +101,40 @@ Set, inspect, or delete credentials directly through the Doppler CLI:
 
 ---
 
-## 4. Hydrating Doppler from Upstream Vaults
+## 4. Storing and Updating Vault Secrets
+
+Use [`scripts/get_credential.py`](./scripts/get_credential.py) to save or update
+credentials in upstream vaults with automatic dot-path updates and zero-disk
+plaintext file ingestion:
+
+### A. Saving Structured Secrets and Subfield Updates
+
+```bash
+# Save a structured JSON secret into Bitwarden Secrets Manager
+python3 scripts/get_credential.py set slack_agents \
+  '{"bot_token": "xoxb-...", "team_id": "T..."}' \
+  --note "Slack Bot Workspace Token"
+
+# Atomically update a single subfield in existing JSON secret
+python3 scripts/get_credential.py set slack_agents.bot_token "xoxb-new..."
+```
+
+### B. Ingesting OAuth / Env Files and Auto-Purging
+
+Ingest downloaded client JSON or `.env` files and securely delete the plaintext
+file immediately after ingestion:
+
+```bash
+# Ingest Google OAuth client JSON into bws and delete plaintext download
+python3 scripts/get_credential.py set gws_auth \
+  --from-file ~/Downloads/client_secret_*.json \
+  --delete-after \
+  --note "Google Workspace CLI OAuth Client"
+```
+
+---
+
+## 5. Hydrating Doppler from Upstream Vaults
 
 When bootstrapping a new machine or working across environments, hydrate your
 local Doppler project directly from your upstream vault using
@@ -134,7 +167,7 @@ python3 scripts/get_credential.py sync \
 
 ---
 
-## 5. Injecting Credentials at Runtime
+## 6. Injecting Credentials at Runtime
 
 Inject secrets into process memory at execution time rather than writing
 unencrypted `.env` files to disk.
@@ -166,7 +199,7 @@ variables without touching disk.
 
 ---
 
-## 6. Anti-Patterns & Guardrails
+## 7. Anti-Patterns & Guardrails
 
 | Anti-Pattern | Why It Fails | Recommended Pattern |
 | :--- | :--- | :--- |
@@ -178,9 +211,9 @@ variables without touching disk.
 
 ---
 
-## 7. Companion Scripts
+## 8. Companion Scripts
 
 * [`scripts/check_doppler.py`](./scripts/check_doppler.py): Doppler CLI and
   project status verification helper.
 * [`scripts/get_credential.py`](./scripts/get_credential.py): Upstream vault
-  resolver and Doppler synchronization helper.
+  resolver, secret persistence engine, and Doppler synchronization helper.
