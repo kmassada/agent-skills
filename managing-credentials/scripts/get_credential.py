@@ -26,22 +26,35 @@ class CredentialError(Exception):
 
 
 def _load_bw_key_file() -> None:
-    """Auto-loads ~/.local/bw_key.zsh into os.environ if present."""
-    if "BWS_ACCESS_TOKEN" in os.environ:
-        return
-    bw_key_file = os.path.expanduser("~/.local/bw_key.zsh")
-    if os.path.exists(bw_key_file):
-        try:
-            with open(bw_key_file, encoding="utf-8") as f:
-                for raw_line in f:
-                    clean_line = raw_line.strip()
-                    if clean_line.startswith("export "):
-                        clean_line = clean_line[7:].strip()
-                    if "=" in clean_line:
-                        k, _, v = clean_line.partition("=")
-                        os.environ[k.strip()] = v.strip().strip("'\"")
-        except OSError:
-            pass
+    """Auto-loads Bitwarden tokens from pass store or ~/.local/bw_key.zsh into os.environ."""
+    if "BWS_ACCESS_TOKEN" not in os.environ:
+        # 1. Try resolving from local pass store
+        pass_token = resolve_from_pass("bitwarden/access_token") or resolve_from_pass(
+            "bws/token"
+        )
+        if pass_token:
+            os.environ["BWS_ACCESS_TOKEN"] = pass_token
+
+        pass_proj = resolve_from_pass("bitwarden/project_id") or resolve_from_pass(
+            "bws/project_id"
+        )
+        if pass_proj and "BWS_PROJECT_ID" not in os.environ:
+            os.environ["BWS_PROJECT_ID"] = pass_proj
+
+    if "BWS_ACCESS_TOKEN" not in os.environ:
+        bw_key_file = os.path.expanduser("~/.local/bw_key.zsh")
+        if os.path.exists(bw_key_file):
+            try:
+                with open(bw_key_file, encoding="utf-8") as f:
+                    for raw_line in f:
+                        clean_line = raw_line.strip()
+                        if clean_line.startswith("export "):
+                            clean_line = clean_line[7:].strip()
+                        if "=" in clean_line:
+                            k, _, v = clean_line.partition("=")
+                            os.environ[k.strip()] = v.strip().strip("'\"")
+            except OSError:
+                pass
 
 
 def resolve_from_pass(secret_name: str, prefix: str = "ai-agents") -> str | None:
