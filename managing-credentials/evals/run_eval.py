@@ -24,7 +24,16 @@ from pathlib import Path
 from typing import Any
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
+SKILL_ROOT = SCRIPT_DIR.parent
 DEFAULT_DATASET = SCRIPT_DIR / "evals.json"
+
+# Static mode scores the skill's own documentation. Scoring hand-written sample
+# answers instead would be circular: the sample would be authored to satisfy the
+# very patterns under test, and the suite could never fail.
+SKILL_DOC_PATHS: Sequence[Path] = (
+    SKILL_ROOT / "SKILL.md",
+    SKILL_ROOT / "references" / "ARCHITECTURE.md",
+)
 
 
 class TermColor:
@@ -96,50 +105,46 @@ def check_credential_expectation(text: str, expectation: str) -> tuple[bool, str
     return True, "Default check"
 
 
+def load_skill_corpus(paths: Sequence[Path] = SKILL_DOC_PATHS) -> str:
+    """Concatenates the skill's documentation into one searchable corpus.
+
+    Args:
+        paths: Documentation files to include.
+
+    Returns:
+        Concatenated document text.
+
+    Raises:
+        FileNotFoundError: If no documentation file exists at any given path.
+    """
+    parts = [p.read_text(encoding="utf-8") for p in paths if p.is_file()]
+    if not parts:
+        raise FileNotFoundError(
+            f"No skill documentation found at: {', '.join(str(p) for p in paths)}"
+        )
+    return "\n\n".join(parts)
+
+
 def run_static_eval(
-    test_case: Mapping[str, Any], verbose: bool = False
+    test_case: Mapping[str, Any],
+    corpus: str | None = None,
+    verbose: bool = False,
 ) -> tuple[bool, Sequence[str]]:
-    """Evaluates test expectations against expected outputs deterministically.
+    """Checks that the skill's documentation satisfies a case's expectations.
 
     Args:
         test_case: Evaluation case dictionary from evals.json.
+        corpus: Text to score. Defaults to the skill's own documentation.
         verbose: If True, prints check details.
 
     Returns:
         Tuple of (passed_boolean, failure_reasons_sequence).
     """
-    test_id = test_case.get("id", "unknown")
     expectations: Sequence[str] = test_case.get("expectations", [])
     expected_patterns: Sequence[str] = test_case.get("expected_command_patterns", [])
     forbidden_patterns: Sequence[str] = test_case.get("forbidden_command_patterns", [])
 
-    sample_solutions: dict[int, str] = {
-        1: (
-            "Initialize your password store via `pass init user@local`.\n"
-            "Set tokens securely via `cred set slack/bot_token 'xoxb-...'`.\n"
-            "Never commit unencrypted .env files to git or host disk."
-        ),
-        2: (
-            "Use `cred run -- python3 scripts/my_agent.py` to inject "
-            "environment variables into memory without writing .env to disk.\n"
-            "Keep MCP server configs clean and launch the agent session via "
-            "`cred run -- agy` so child MCP processes inherit credentials."
-        ),
-        3: (
-            "Sync your Bitwarden vault using `cred sync --upstream bitwarden --dest pass`\n"
-            "or `python3 scripts/get_credential.py sync --upstream bitwarden --dest pass`.\n"
-            "Run your agent directly with `cred run -- agy`.\n"
-            "Zero plaintext tokens are written to .env or disk."
-        ),
-        4: (
-            "Authenticate with `gcloud auth login`.\n"
-            "Retrieve credentials via `gcloud secrets versions access latest --secret=SLACK_BOT_TOKEN`\n"
-            "or use `python3 scripts/get_credential.py get SLACK_BOT_TOKEN --provider gcp --project my-corp`.\n"
-            "Inject tokens into memory at runtime with `python3 scripts/get_credential.py run -- agy`."
-        ),
-    }
-
-    solution = sample_solutions.get(test_id) or test_case.get("expected_output") or ""
+    solution = corpus if corpus is not None else load_skill_corpus()
     failures: list[str] = []
 
     for pat in expected_patterns:
@@ -273,6 +278,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"{TermColor.RED}Failed to load dataset: {e}{TermColor.RESET}")
         return 1
 
+    corpus: str | None = None
+    if args.static:
+        try:
+            corpus = load_skill_corpus()
+        except OSError as e:
+            print(f"{TermColor.RED}Failed to load skill docs: {e}{TermColor.RESET}")
+            return 1
+
     total = len(cases)
     passed_count = 0
 
@@ -286,7 +299,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Case #{cid}: {case.get('prompt', '')[:65]}...")
 
         if args.static:
-            ok, failures = run_static_eval(case, verbose=args.verbose)
+            ok, failures = run_static_eval(case, corpus=corpus, verbose=args.verbose)
         else:
             ok, failures = run_agent_eval(
                 case, backend=args.backend, verbose=args.verbose

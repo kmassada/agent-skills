@@ -84,6 +84,19 @@ transformed into uppercase environment variables for child processes:
 * Standard aliases (e.g., `GWS_*` -> `GOOGLE_WORKSPACE_CLI_*`) are mapped
   automatically.
 
+### D. Entries Withheld from Injection
+
+Bulk injection is deliberately not "everything in the store":
+
+* **`bitwarden/*` and `bws/*` are never injected.** These are bootstrap
+  credentials: they unlock the upstream vault that holds every other secret.
+  Injecting them would mean one leaky MCP server costs you the whole vault
+  instead of one service token. `cred sync` reads them directly; child processes
+  never see them.
+* **Process-control variables are refused.** An entry that would render as
+  `PATH`, `HOME`, `LD_PRELOAD`, `DYLD_INSERT_LIBRARIES` (and similar) is skipped
+  with a warning, so a store entry cannot hijack the process `cred run` launches.
+
 ---
 
 ## 3. OS Keyring & GPG-Agent Bridge (macOS & Linux)
@@ -173,8 +186,27 @@ gpgconf --kill gpg-agent
 
 ### Step 3: Initialize Local Password Store
 
+Choose a key type deliberately — this decides what "encrypted at rest" actually
+buys you.
+
+#### Desktop (macOS / Linux) — passphrase-protected key
+
+This is the default you want on any machine you carry. The passphrase is cached
+by the OS keyring via the pinentry configured in Step 2, so background agents
+still run without prompts:
+
 ```bash
-# Generate local disposable GPG key for pass
+# Generate a passphrase-protected key (gpg prompts via pinentry)
+gpg --full-generate-key --expert
+
+# Initialize pass repository against that key's email
+pass init agent-user@local
+```
+
+#### Headless / CI / container — unprotected key
+
+```bash
+# Disposable container key: no passphrase, for automated runners only
 gpg --batch --gen-key <<EOF
 Key-Type: EDDSA
 Key-Curve: ed25519
@@ -187,8 +219,28 @@ Expire-Date: 0
 %commit
 EOF
 
-# Initialize pass repository
 pass init agent-user@local
+```
+
+> **What `%no-protection` costs you.** The private key sits unencrypted in
+> `~/.gnupg`. Anything that can read that directory — a process running as you,
+> a Time Machine or `rsync` backup, a stolen unlocked disk image — decrypts the
+> entire store. The store is then obfuscated at rest, not encrypted against a
+> local attacker. That is an acceptable trade for a disposable runner that holds
+> scoped credentials and is rebuilt from upstream; it is a poor one for a laptop.
+> Note also that the macOS "Allow all applications to access this item" Keychain
+> ACL in §3A grants every local process access to the cached passphrase — prefer
+> leaving the ACL prompting per-application if you can tolerate the first prompt.
+
+### Step 3b: Install the `cred` Command
+
+`cred` is this skill's `scripts/get_credential.py` on your `PATH`. Symlink it
+rather than copying, so the command cannot drift from the skill:
+
+```bash
+mkdir -p ~/.local/bin
+ln -sf "$PWD/scripts/get_credential.py" ~/.local/bin/cred
+chmod +x scripts/get_credential.py
 ```
 
 ### Step 4: Hydrate from Bitwarden
@@ -227,6 +279,12 @@ cred sync --upstream bitwarden --dest pass
 # Add or update a local secret manually with hidden input (no echo)
 cred set slack/bot_token
 
-# Ingest an OAuth client JSON file and automatically wipe the source download
+# Ingest an OAuth client JSON file and purge the source download afterwards
 cred set gws --from-file ~/Downloads/client_secret_*.json --delete-after
 ```
+
+> `--delete-after` overwrites the source file's bytes and unlinks it, but only
+> once the vault write is confirmed. It is best effort, not a forensic wipe:
+> copy-on-write filesystems (APFS, Btrfs), SSD wear levelling, snapshots and
+> editor backups may retain the original blocks. Treat a credential that ever
+> touched disk as one to rotate, not merely to delete.

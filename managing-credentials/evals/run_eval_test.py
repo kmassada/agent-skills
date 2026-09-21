@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 from run_eval import (
     check_credential_expectation,
     load_dataset,
+    load_skill_corpus,
     main,
     run_static_eval,
 )
@@ -42,7 +43,6 @@ class TestRunEval(unittest.TestCase):
     def test_run_static_eval_success(self) -> None:
         case = {
             "id": 1,
-            "expected_output": "pass init user@local && cred set slack/bot_token xoxb",
             "expectations": [
                 "pass init",
                 "cred set",
@@ -53,21 +53,45 @@ class TestRunEval(unittest.TestCase):
             ],
             "forbidden_command_patterns": [r"echo\s+>\s+\.env"],
         }
-        ok, failures = run_static_eval(case)
+        corpus = "pass init user@local && cred set slack/bot_token"
+        ok, failures = run_static_eval(case, corpus=corpus)
         self.assertTrue(ok, msg=str(failures))
         self.assertEqual(len(failures), 0)
 
     def test_run_static_eval_forbidden_failure(self) -> None:
         case = {
             "id": 99,
-            "expected_output": "cred run -- python3 script.py\necho > .env",
             "expectations": ["cred run"],
             "expected_command_patterns": [r"cred\s+run\s+--"],
             "forbidden_command_patterns": [r"echo\s+>\s+\.env"],
         }
-        ok, failures = run_static_eval(case)
+        corpus = "cred run -- python3 script.py\necho > .env"
+        ok, failures = run_static_eval(case, corpus=corpus)
         self.assertFalse(ok)
         self.assertTrue(any("forbidden" in f for f in failures))
+
+    def test_run_static_eval_missing_pattern_fails(self) -> None:
+        """The suite must be falsifiable: absent documentation is a failure."""
+        case = {
+            "id": 100,
+            "expectations": [],
+            "expected_command_patterns": [r"cred\s+teleport"],
+            "forbidden_command_patterns": [],
+        }
+        ok, failures = run_static_eval(case, corpus="cred run -- agy")
+        self.assertFalse(ok)
+        self.assertTrue(any("Missing expected command pattern" in f for f in failures))
+
+    def test_load_skill_corpus_reads_real_docs(self) -> None:
+        """Static mode scores the shipped documentation, not a sample answer."""
+        corpus = load_skill_corpus()
+        self.assertIn("cred run", corpus)
+        self.assertIn("pass init", corpus)
+
+    def test_load_skill_corpus_missing_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with self.assertRaises(FileNotFoundError):
+                load_skill_corpus([Path(tmp_dir) / "absent.md"])
 
     def test_load_dataset_valid(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

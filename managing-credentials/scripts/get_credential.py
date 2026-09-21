@@ -16,14 +16,144 @@ import argparse
 import getpass
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
 from collections.abc import Mapping, Sequence
 
+# Process-control variables a secret must never be allowed to overwrite. A store
+# entry named 'path' or a vault payload with a 'home' key would otherwise hijack
+# the child process launched by `cred run`.
+RESERVED_ENV_VARS: frozenset[str] = frozenset(
+    {
+        "DYLD_FALLBACK_LIBRARY_PATH",
+        "DYLD_INSERT_LIBRARIES",
+        "DYLD_LIBRARY_PATH",
+        "HOME",
+        "IFS",
+        "LD_AUDIT",
+        "LD_LIBRARY_PATH",
+        "LD_PRELOAD",
+        "PATH",
+        "PYTHONPATH",
+        "PYTHONSTARTUP",
+        "SHELL",
+    }
+)
 
-class CredentialError(Exception):
-    """Base exception for credential retrieval failures."""
+# Bootstrap credentials: the keys that unlock the *upstream* vault. These live in
+# the local store so `cred sync` can run unattended, but they must never be bulk
+# injected into agents or MCP servers - a single leaky child process would
+# otherwise surrender the entire upstream vault rather than one service token.
+BOOTSTRAP_SERVICE_FOLDERS: frozenset[str] = frozenset({"bitwarden", "bws"})
+
+# Legacy shell fallback for the Bitwarden bootstrap token, and the only keys
+# honoured from it. Declared as a constant so tests can redirect it instead of
+# reading the developer's real file.
+BW_KEY_FILE_PATH = "~/.local/bw_key.zsh"
+_BW_KEY_FILE_ALLOWED: frozenset[str] = frozenset({"BWS_ACCESS_TOKEN", "BWS_PROJECT_ID"})
+
+
+def is_bootstrap_entry(relative_path: str) -> bool:
+    """Reports whether a store-relative path holds an upstream bootstrap credential.
+
+    Args:
+        relative_path: Path within the store prefix, e.g. 'bitwarden/access_token'.
+
+    Returns:
+        True if the entry unlocks the upstream vault and must not be bulk injected.
+    """
+    head, _, _ = relative_path.partition("/")
+    return head.lower() in BOOTSTRAP_SERVICE_FOLDERS
+
+
+def safe_inject(target: dict[str, str], name: str, value: str) -> None:
+    """Records a secret under an environment variable name, refusing reserved names.
+
+    Args:
+        target: Mapping of environment variable names being assembled.
+        name: Candidate environment variable name.
+        value: Secret value.
+    """
+    if name.upper() in RESERVED_ENV_VARS:
+        print(
+            f"Warning: refusing to inject reserved environment variable '{name}'.",
+            file=sys.stderr,
+        )
+        return
+    target[name] = value
+
+
+def normalize_pass_payload(raw: str) -> str:
+    """Trims a `pass show` payload without discarding multi-line secret bodies.
+
+    Only trailing newlines added by `pass` are removed. Multi-line secrets (PEM
+    keys, certificates, pretty-printed JSON) are returned intact rather than
+    truncated to their first line.
+
+    Args:
+        raw: Raw stdout captured from `pass show`.
+
+    Returns:
+        The secret payload with trailing newlines removed.
+    """
+    payload = raw.rstrip("\n")
+    return payload.strip() if "\n" not in payload else payload
+
+
+def extract_json_field(raw: str, field: str) -> str | None:
+    """Extracts a top-level field from a JSON secret payload, case-insensitively.
+
+    Args:
+        raw: Secret payload that may contain a JSON object.
+        field: Field name to look up.
+
+    Returns:
+        The stringified field value, or None if the payload is not a JSON object
+        or has no such field.
+    """
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if isinstance(parsed, dict):
+        for k, v in parsed.items():
+            if k.lower() == field.lower():
+                return str(v)
+    return None
+
+
+def purge_source_file(path: str) -> bool:
+    """Overwrites and removes an ingested credential file on a best-effort basis.
+
+    The file's bytes are overwritten once before unlinking. This defeats casual
+    recovery and undelete tooling, but it is NOT a forensic wipe: copy-on-write
+    filesystems (APFS, Btrfs), SSD wear levelling, snapshots and editor backups
+    may all retain the original blocks.
+
+    Args:
+        path: Resolved path of the file to purge.
+
+    Returns:
+        True if the file was removed, otherwise False.
+    """
+    try:
+        size = os.path.getsize(path)
+        with open(path, "r+b") as handle:
+            handle.write(b"\0" * size)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except OSError:
+        # Overwriting is opportunistic; still attempt the unlink below.
+        pass
+
+    try:
+        os.remove(path)
+        return True
+    except OSError as exc:
+        print(f"Warning: Could not delete {path}: {exc}", file=sys.stderr)
+        return False
 
 
 def _load_bw_key_file() -> None:
@@ -43,7 +173,7 @@ def _load_bw_key_file() -> None:
             os.environ["BWS_PROJECT_ID"] = pass_proj
 
     if "BWS_ACCESS_TOKEN" not in os.environ:
-        bw_key_file = os.path.expanduser("~/.local/bw_key.zsh")
+        bw_key_file = os.path.expanduser(BW_KEY_FILE_PATH)
         if os.path.exists(bw_key_file):
             try:
                 with open(bw_key_file, encoding="utf-8") as f:
@@ -53,7 +183,12 @@ def _load_bw_key_file() -> None:
                             clean_line = clean_line[7:].strip()
                         if "=" in clean_line:
                             k, _, v = clean_line.partition("=")
-                            os.environ[k.strip()] = v.strip().strip("'\"")
+                            key = k.strip().upper()
+                            # Only Bitwarden bootstrap keys are honoured: this file
+                            # is sourced shell, and an unfiltered import would let
+                            # it redefine PATH for every subsequent lookup.
+                            if key in _BW_KEY_FILE_ALLOWED and key not in os.environ:
+                                os.environ[key] = v.strip().strip("'\"")
             except OSError:
                 pass
 
@@ -97,19 +232,13 @@ def resolve_from_pass(secret_name: str, prefix: str = "ai-agents") -> str | None
                 check=False,
             )
             if res.returncode == 0 and res.stdout:
-                lines = res.stdout.splitlines()
-                if lines:
-                    val = lines[0].strip()
-                    if val.startswith("{") or "\n" in res.stdout:
-                        try:
-                            full_json = json.loads(res.stdout)
-                            if isinstance(full_json, dict) and sub_key:
-                                for k, v in full_json.items():
-                                    if k.lower() == sub_key.lower():
-                                        return str(v)
-                        except json.JSONDecodeError:
-                            pass
-                    return val
+                payload = normalize_pass_payload(res.stdout)
+                if payload:
+                    if sub_key:
+                        field = extract_json_field(payload, sub_key)
+                        if field is not None:
+                            return field
+                    return payload
         except (subprocess.SubprocessError, OSError):
             pass
 
@@ -123,14 +252,9 @@ def resolve_from_pass(secret_name: str, prefix: str = "ai-agents") -> str | None
                 check=False,
             )
             if res.returncode == 0 and res.stdout.strip():
-                try:
-                    parsed = json.loads(res.stdout.strip())
-                    if isinstance(parsed, dict):
-                        for k, v in parsed.items():
-                            if k.lower() == sub_key.lower():
-                                return str(v)
-                except json.JSONDecodeError:
-                    pass
+                field = extract_json_field(normalize_pass_payload(res.stdout), sub_key)
+                if field is not None:
+                    return field
         except (subprocess.SubprocessError, OSError):
             pass
 
@@ -447,6 +571,8 @@ def resolve_secret(
     if dop_val:
         return dop_val
 
+    return None
+
 
 # Known tool-specific environment variable aliases
 KNOWN_ENV_ALIASES: Mapping[str, Sequence[str]] = {
@@ -504,6 +630,14 @@ def resolve_all_secrets(
                         else:
                             entry_path = f"{rel_dir}/{base_name}"
 
+                        clean_rel = entry_path
+                        if clean_rel.startswith(f"{prefix}/"):
+                            clean_rel = clean_rel[len(prefix) + 1 :]
+
+                        # Never hand the upstream vault key to a child process.
+                        if is_bootstrap_entry(clean_rel):
+                            continue
+
                         res = subprocess.run(
                             ["pass", "show", entry_path],
                             capture_output=True,
@@ -511,23 +645,20 @@ def resolve_all_secrets(
                             check=False,
                         )
                         if res.returncode == 0 and res.stdout.strip():
-                            val = res.stdout.strip().splitlines()[0]
-                            clean_rel = entry_path
-                            if clean_rel.startswith(f"{prefix}/"):
-                                clean_rel = clean_rel[len(prefix) + 1 :]
+                            val = normalize_pass_payload(res.stdout)
 
                             parts = clean_rel.split("/")
                             var_name = clean_rel.replace("/", "_").upper()
-                            injected[var_name] = val
+                            safe_inject(injected, var_name, val)
 
                             if len(parts) >= 2:
                                 service = parts[0].upper()
                                 field = "_".join(parts[1:]).upper()
                                 standard_key = f"{service}_{field}"
-                                injected[standard_key] = val
+                                safe_inject(injected, standard_key, val)
 
                                 for alias in KNOWN_ENV_ALIASES.get(standard_key, ()):
-                                    injected[alias] = val
+                                    safe_inject(injected, alias, val)
         return injected
 
     if provider == "bitwarden":
@@ -556,6 +687,9 @@ def resolve_all_secrets(
                     continue
                 sec_id = s["id"]
                 sec_key = s.get("key", "")
+                # Never hand the upstream vault key to a child process.
+                if is_bootstrap_entry(sec_key):
+                    continue
                 get_res = subprocess.run(
                     ["bws", "secret", "get", sec_id],
                     capture_output=True,
@@ -601,13 +735,13 @@ def resolve_all_secrets(
                             # General prefix exports
                             prefix = f"{sec_key.upper()}_"
                             for k, v in parsed_json.items():
-                                injected[f"{prefix}{k.upper()}"] = str(v)
+                                safe_inject(injected, f"{prefix}{k.upper()}", str(v))
                                 if k.upper() not in injected:
-                                    injected[k.upper()] = str(v)
+                                    safe_inject(injected, k.upper(), str(v))
                         else:
-                            injected[sec_key.upper()] = str(val)
+                            safe_inject(injected, sec_key.upper(), str(val))
                     except json.JSONDecodeError:
-                        injected[sec_key.upper()] = str(val)
+                        safe_inject(injected, sec_key.upper(), str(val))
         except json.JSONDecodeError:
             pass
 
@@ -632,6 +766,9 @@ def sync_to_doppler(
     if not shutil.which("doppler") or not secrets:
         return False
 
+    # SECURITY: values are appended as KEY=VALUE argv elements and are therefore
+    # visible to `ps` for the lifetime of the call. Doppler offers no batch stdin
+    # mode; `pass` remains the recommended destination for sensitive material.
     cmd = ["doppler", "secrets", "set", "--silent"]
     if project:
         cmd.extend(["--project", project])
@@ -762,11 +899,7 @@ def save_to_pass(
             success = False
 
     if success and from_file and delete_after:
-        resolved_path = os.path.expanduser(from_file)
-        try:
-            os.remove(resolved_path)
-        except OSError:
-            pass
+        purge_source_file(os.path.expanduser(from_file))
 
     return success
 
@@ -807,6 +940,8 @@ def save_secret(
             delete_after=delete_after,
             prefix=prefix,
         )
+
+    pending_delete_path: str | None = None
 
     if from_file:
         resolved_path = os.path.expanduser(from_file)
@@ -850,14 +985,11 @@ def save_secret(
                 else:
                     value = content
 
+            # Deletion is deferred until the vault write is confirmed. Removing
+            # the source here would destroy the only copy of the credential
+            # whenever the upstream write subsequently fails.
             if delete_after:
-                try:
-                    os.remove(resolved_path)
-                except OSError as exc:
-                    print(
-                        f"Warning: Could not delete {from_file}: {exc}",
-                        file=sys.stderr,
-                    )
+                pending_delete_path = resolved_path
         except OSError as exc:
             print(f"Error reading file {from_file}: {exc}", file=sys.stderr)
             return False
@@ -894,6 +1026,39 @@ def save_secret(
     else:
         target_key = secret_name
 
+    written = _write_to_remote_vault(
+        target_key,
+        value,
+        provider=provider,
+        project_id=project_id,
+        note=note,
+    )
+
+    if written and pending_delete_path:
+        purge_source_file(pending_delete_path)
+
+    return written
+
+
+def _write_to_remote_vault(
+    target_key: str,
+    value: str,
+    provider: str,
+    project_id: str | None = None,
+    note: str | None = None,
+) -> bool:
+    """Writes an already-resolved value to a non-pass vault backend.
+
+    Args:
+        target_key: Secret key name in the destination vault.
+        value: Fully-resolved secret payload.
+        provider: Destination provider ('bitwarden', 'gcp', 'doppler').
+        project_id: Optional project UUID or name.
+        note: Optional description for the secret.
+
+    Returns:
+        True if the write succeeded, otherwise False.
+    """
     if provider == "bitwarden":
         if not shutil.which("bws"):
             print("Error: bws CLI is not installed.", file=sys.stderr)
@@ -929,6 +1094,10 @@ def save_secret(
             except json.JSONDecodeError:
                 pass
 
+        # SECURITY: bws takes the secret value as an argv element, so it is
+        # briefly visible to `ps` for other processes owned by this user. The
+        # bws CLI exposes no stdin input mode; prefer `--provider pass`, whose
+        # writes go through stdin, for anything that must never hit argv.
         if existing_id:
             cmd = ["bws", "secret", "edit", existing_id, "--value", value]
             if note:
@@ -1008,7 +1177,17 @@ def run_command_with_injected_secrets(
         Exit code of the executed command.
     """
     env = os.environ.copy()
-    env.update(secrets)
+    # Defence in depth: resolvers already refuse reserved names, but an explicit
+    # `--keys PATH:some_secret` mapping reaches this function unfiltered.
+    for name, value in secrets.items():
+        if name.upper() in RESERVED_ENV_VARS:
+            print(
+                f"Warning: refusing to inject reserved environment variable "
+                f"'{name}' into the child process.",
+                file=sys.stderr,
+            )
+            continue
+        env[name] = value
     try:
         res = subprocess.run(list(cmd), env=env, check=False)
         return res.returncode
@@ -1080,7 +1259,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     set_parser = subparsers.add_parser("set", help="Save or update a secret in a vault")
     set_parser.add_argument("secret_name", help="Name of the secret or dot-path")
     set_parser.add_argument(
-        "value", nargs="?", default=None, help="Secret value or JSON payload"
+        "value",
+        nargs="?",
+        default=None,
+        help=(
+            "Secret value or JSON payload. Discouraged: this lands in shell "
+            "history and in `ps` output. Omit it to be prompted without echo, "
+            "or pipe the value on stdin."
+        ),
     )
     set_parser.add_argument(
         "--provider",
@@ -1095,7 +1281,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     set_parser.add_argument(
         "--delete-after",
         action="store_true",
-        help="Securely delete source file after ingestion",
+        help=(
+            "Overwrite and delete the source file after the vault write is "
+            "confirmed (best effort; not a forensic wipe on CoW/SSD volumes)"
+        ),
     )
 
     # get subcommand
@@ -1122,7 +1311,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     list_parser.add_argument(
         "--provider",
-        choices=["pass", "bitwarden", "gcp"],
+        choices=["pass", "bitwarden"],
         default="pass",
         help="Secret provider to inspect (default: pass)",
     )
@@ -1180,6 +1369,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "set":
         secret_val = args.value
+        if secret_val is not None:
+            print(
+                "Warning: passing a secret as a command-line argument exposes it "
+                "to shell history and to `ps`. Omit the value to be prompted "
+                "without echo, or pipe it on stdin.",
+                file=sys.stderr,
+            )
         if secret_val is None and not args.from_file:
             if sys.stdin.isatty():
                 try:
@@ -1234,7 +1430,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.format == "json":
             print(json.dumps({args.secret_name: val}))
         elif args.format == "export":
-            print(f'export {args.secret_name}="{val}"')
+            # Store paths ('slack/bot_token') are not shell identifiers; render
+            # them the same way `cred run` does.
+            var_name = args.secret_name.replace("/", "_").replace(".", "_").upper()
+            # shlex.quote is mandatory here: this line is designed to be eval'd,
+            # and a secret containing $(...) or backticks would otherwise execute.
+            print(f"export {var_name}={shlex.quote(val)}")
         return 0
 
     if args.command == "run":
@@ -1329,6 +1530,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 1
 
         doppler_payload: dict[str, str] = {}
+        write_failures: list[str] = []
         for key in keys:
             target_var = key
             source_key = key
@@ -1361,13 +1563,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if val_dict is not None:
                     service_folder = normalize_service_name(source_key)
                     for sub_k, sub_v in val_dict.items():
-                        save_to_pass(
-                            f"{service_folder}/{sub_k.lower()}",
-                            value=sub_v,
-                            prefix=args.prefix,
-                        )
+                        entry = f"{service_folder}/{sub_k.lower()}"
+                        if not save_to_pass(entry, value=sub_v, prefix=args.prefix):
+                            write_failures.append(entry)
                 else:
-                    save_to_pass(target_var.lower(), value=val, prefix=args.prefix)
+                    entry = target_var.lower()
+                    if not save_to_pass(entry, value=val, prefix=args.prefix):
+                        write_failures.append(entry)
             elif args.dest == "doppler":
                 if val_dict is not None:
                     prefix_name = f"{source_key.upper()}_"
@@ -1377,7 +1579,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                     doppler_payload[target_var] = val
 
         if args.dest == "doppler" and doppler_payload:
-            sync_to_doppler(doppler_payload, project=args.project)
+            if not sync_to_doppler(doppler_payload, project=args.project):
+                write_failures.append("doppler batch write")
+
+        if write_failures:
+            print(
+                f"Error: {len(write_failures)} destination write(s) failed: "
+                f"{', '.join(write_failures)}",
+                file=sys.stderr,
+            )
+            return 1
 
         print(f"Successfully synced secrets from {args.upstream} into {args.dest}.")
         return 0

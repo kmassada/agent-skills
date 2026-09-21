@@ -10,13 +10,20 @@ from __future__ import annotations
 import io
 import json
 import os
+import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
 
+import get_credential
 from get_credential import (
+    extract_json_field,
+    is_bootstrap_entry,
     list_secrets,
     main,
+    normalize_pass_payload,
+    purge_source_file,
     resolve_all_secrets,
     resolve_from_bitwarden,
     resolve_from_doppler,
@@ -24,6 +31,7 @@ from get_credential import (
     resolve_from_pass,
     resolve_secret,
     run_command_with_injected_secrets,
+    safe_inject,
     save_secret,
     save_to_pass,
     sync_to_doppler,
@@ -32,6 +40,32 @@ from get_credential import (
 
 class TestGetCredential(unittest.TestCase):
     """Hermetic unit tests for multi-backend credential resolver."""
+
+    def setUp(self) -> None:
+        """Isolates every test from the developer's real environment and files.
+
+        Two escape hatches exist otherwise: `_load_bw_key_file` mutates
+        `os.environ` in place (leaking state into later tests), and it reads
+        `~/.local/bw_key.zsh` from the real home directory.
+        """
+        env_patch = mock.patch.dict(os.environ, {}, clear=True)
+        env_patch.start()
+        self.addCleanup(env_patch.stop)
+
+        self._tmp_home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self._tmp_home, ignore_errors=True)
+        key_patch = mock.patch.object(
+            get_credential,
+            "BW_KEY_FILE_PATH",
+            os.path.join(self._tmp_home, "absent_bw_key.zsh"),
+        )
+        key_patch.start()
+        self.addCleanup(key_patch.stop)
+
+        # The CLI writes progress lines to stdout; keep test output readable.
+        out_patch = mock.patch("sys.stdout", new_callable=io.StringIO)
+        self.stdout = out_patch.start()
+        self.addCleanup(out_patch.stop)
 
     @mock.patch("shutil.which", return_value="/usr/local/bin/bws")
     @mock.patch.dict(os.environ, {"BWS_ACCESS_TOKEN": "token-123"})
@@ -226,8 +260,38 @@ class TestGetCredential(unittest.TestCase):
             code = main(["get", "MY_KEY", "--format", "export"])
             self.assertEqual(code, 0)
             self.assertEqual(
-                mock_out.getvalue().strip(), 'export MY_KEY="my_resolved_val"'
+                mock_out.getvalue().strip(), "export MY_KEY=my_resolved_val"
             )
+
+    @mock.patch(
+        "get_credential.resolve_secret", return_value='a"b$(whoami)`id` ;rm -rf .'
+    )
+    def test_main_get_export_quotes_hostile_value(
+        self, mock_resolve: mock.MagicMock
+    ) -> None:
+        """A secret containing shell metacharacters must not execute on eval."""
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as mock_out:
+            code = main(["get", "MY_KEY", "--format", "export"])
+        self.assertEqual(code, 0)
+        line = mock_out.getvalue().strip()
+        self.assertEqual(line, """export MY_KEY='a"b$(whoami)`id` ;rm -rf .'""")
+        # Round-trip through a real shell: the value must survive verbatim.
+        echoed = subprocess.run(
+            ["/bin/sh", "-c", f'{line}; printf "%s" "$MY_KEY"'],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertEqual(echoed.stdout, 'a"b$(whoami)`id` ;rm -rf .')
+
+    @mock.patch("get_credential.resolve_secret", return_value="tok")
+    def test_main_get_export_normalizes_store_path(
+        self, mock_resolve: mock.MagicMock
+    ) -> None:
+        """Store paths are not shell identifiers and must be rendered as such."""
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as mock_out:
+            main(["get", "slack/bot_token", "--format", "export"])
+        self.assertEqual(mock_out.getvalue().strip(), "export SLACK_BOT_TOKEN=tok")
 
     @mock.patch("get_credential.resolve_secret", return_value="synced_val")
     @mock.patch("get_credential.sync_to_doppler", return_value=True)
@@ -540,6 +604,223 @@ class TestGetCredential(unittest.TestCase):
         mock_read.assert_called_once()
         mock_save.assert_called_once()
         self.assertEqual(mock_save.call_args[1]["value"], "piped_secret_val")
+
+    # --- Payload integrity ---------------------------------------------------
+
+    def test_normalize_pass_payload_preserves_multiline(self) -> None:
+        pem = "-----BEGIN KEY-----\nMIIB\nAgEA\n-----END KEY-----\n"
+        self.assertEqual(normalize_pass_payload(pem), pem.rstrip("\n"))
+        self.assertEqual(normalize_pass_payload("  token  \n"), "token")
+
+    @mock.patch("shutil.which", return_value="/usr/local/bin/pass")
+    @mock.patch("subprocess.run")
+    def test_resolve_from_pass_returns_full_pem(
+        self, mock_run: mock.MagicMock, mock_which: mock.MagicMock
+    ) -> None:
+        """Multi-line secrets must not be truncated to their first line."""
+        pem = "-----BEGIN PRIVATE KEY-----\nLINE2\nLINE3\n-----END PRIVATE KEY-----\n"
+        mock_run.return_value = mock.MagicMock(returncode=0, stdout=pem)
+        self.assertEqual(resolve_from_pass("svc/key"), pem.rstrip("\n"))
+
+    @mock.patch("shutil.which", return_value="/usr/local/bin/pass")
+    @mock.patch("subprocess.run")
+    def test_resolve_from_pass_json_blob_not_truncated(
+        self, mock_run: mock.MagicMock, mock_which: mock.MagicMock
+    ) -> None:
+        """A pretty-printed JSON secret must not collapse to '{'."""
+        blob = json.dumps({"client_id": "cid", "client_secret": "csec"}, indent=2)
+        mock_run.return_value = mock.MagicMock(returncode=0, stdout=blob)
+        self.assertEqual(resolve_from_pass("gws"), blob)
+
+    @mock.patch("shutil.which", return_value="/usr/local/bin/pass")
+    @mock.patch("subprocess.run")
+    def test_resolve_from_pass_dot_path_reads_json_field(
+        self, mock_run: mock.MagicMock, mock_which: mock.MagicMock
+    ) -> None:
+        blob = json.dumps({"client_id": "cid"}, indent=2)
+        mock_run.return_value = mock.MagicMock(returncode=0, stdout=blob)
+        self.assertEqual(resolve_from_pass("gws.client_id"), "cid")
+
+    def test_extract_json_field(self) -> None:
+        blob = json.dumps({"Client_ID": "cid"})
+        self.assertEqual(extract_json_field(blob, "client_id"), "cid")
+        self.assertIsNone(extract_json_field(blob, "missing"))
+        self.assertIsNone(extract_json_field("not json", "client_id"))
+
+    # --- Injection scope and blast radius ------------------------------------
+
+    def test_is_bootstrap_entry(self) -> None:
+        self.assertTrue(is_bootstrap_entry("bitwarden/access_token"))
+        self.assertTrue(is_bootstrap_entry("bws/token"))
+        self.assertFalse(is_bootstrap_entry("slack/bot_token"))
+
+    @mock.patch("shutil.which", return_value="/usr/local/bin/pass")
+    @mock.patch("subprocess.run")
+    @mock.patch("os.walk")
+    @mock.patch("os.path.exists", return_value=True)
+    def test_resolve_all_secrets_pass_excludes_bootstrap_token(
+        self,
+        mock_exists: mock.MagicMock,
+        mock_walk: mock.MagicMock,
+        mock_run: mock.MagicMock,
+        mock_which: mock.MagicMock,
+    ) -> None:
+        """`cred run` must never hand the upstream vault key to a child process."""
+        store = os.path.expanduser("~/.password-store")
+        mock_walk.return_value = [
+            (os.path.join(store, "ai-agents", "bitwarden"), [], ["access_token.gpg"]),
+            (os.path.join(store, "ai-agents", "slack"), [], ["bot_token.gpg"]),
+        ]
+        mock_run.return_value = mock.MagicMock(returncode=0, stdout="xoxb-1\n")
+
+        res = resolve_all_secrets(provider="pass")
+
+        self.assertEqual(res["SLACK_BOT_TOKEN"], "xoxb-1")
+        self.assertNotIn("BITWARDEN_ACCESS_TOKEN", res)
+        # The bootstrap entry is skipped before it is ever decrypted.
+        self.assertEqual(mock_run.call_count, 1)
+
+    def test_safe_inject_refuses_reserved_names(self) -> None:
+        target: dict[str, str] = {}
+        with mock.patch("sys.stderr", new_callable=io.StringIO):
+            safe_inject(target, "PATH", "/evil/bin")
+            safe_inject(target, "home", "/tmp/evil")
+            safe_inject(target, "SLACK_BOT_TOKEN", "xoxb-1")
+        self.assertEqual(target, {"SLACK_BOT_TOKEN": "xoxb-1"})
+
+    @mock.patch("subprocess.run")
+    def test_run_command_refuses_reserved_env_override(
+        self, mock_run: mock.MagicMock
+    ) -> None:
+        """An explicit --keys mapping must not be able to hijack the child."""
+        mock_run.return_value = mock.MagicMock(returncode=0)
+        with mock.patch.dict(os.environ, {"PATH": "/usr/bin"}, clear=True):
+            with mock.patch("sys.stderr", new_callable=io.StringIO):
+                run_command_with_injected_secrets(
+                    ["agy"], {"PATH": "/evil/bin", "SLACK_BOT_TOKEN": "xoxb-1"}
+                )
+        env = mock_run.call_args[1]["env"]
+        self.assertEqual(env["PATH"], "/usr/bin")
+        self.assertEqual(env["SLACK_BOT_TOKEN"], "xoxb-1")
+
+    def test_load_bw_key_file_ignores_non_bootstrap_keys(self) -> None:
+        """The legacy shell file must not be able to redefine PATH."""
+        key_file = os.path.join(self._tmp_home, "bw_key.zsh")
+        with open(key_file, "w", encoding="utf-8") as handle:
+            handle.write("export BWS_ACCESS_TOKEN=tok-1\nexport PATH=/evil/bin\n")
+
+        with (
+            mock.patch.object(get_credential, "BW_KEY_FILE_PATH", key_file),
+            mock.patch("shutil.which", return_value=None),
+        ):
+            get_credential._load_bw_key_file()
+
+        self.assertEqual(os.environ.get("BWS_ACCESS_TOKEN"), "tok-1")
+        self.assertNotIn("PATH", os.environ)
+
+    # --- Source-file lifecycle -----------------------------------------------
+
+    def test_purge_source_file_overwrites_and_removes(self) -> None:
+        with tempfile.NamedTemporaryFile(
+            mode="w", delete=False, dir=self._tmp_home
+        ) as tmp:
+            tmp.write("super-secret-token")
+            path = tmp.name
+        self.assertTrue(purge_source_file(path))
+        self.assertFalse(os.path.exists(path))
+
+    @mock.patch("shutil.which", return_value="/usr/local/bin/bws")
+    @mock.patch.dict(
+        os.environ, {"BWS_ACCESS_TOKEN": "token", "BWS_PROJECT_ID": "proj-1"}
+    )
+    @mock.patch("subprocess.run")
+    def test_delete_after_retains_source_when_vault_write_fails(
+        self, mock_run: mock.MagicMock, mock_which: mock.MagicMock
+    ) -> None:
+        """A failed upstream write must not destroy the only copy of the secret."""
+        mock_run.return_value = mock.MagicMock(
+            returncode=1, stdout="", stderr="auth failed"
+        )
+        with tempfile.NamedTemporaryFile(
+            mode="w", delete=False, suffix=".json", dir=self._tmp_home
+        ) as tmp:
+            tmp.write(json.dumps({"installed": {"client_id": "cid"}}))
+            path = tmp.name
+
+        ok = save_secret(
+            "gws_auth", provider="bitwarden", from_file=path, delete_after=True
+        )
+
+        self.assertFalse(ok)
+        self.assertTrue(os.path.exists(path))
+
+    @mock.patch("shutil.which", return_value="/usr/local/bin/bws")
+    @mock.patch.dict(
+        os.environ, {"BWS_ACCESS_TOKEN": "token", "BWS_PROJECT_ID": "proj-1"}
+    )
+    @mock.patch("subprocess.run")
+    def test_delete_after_purges_source_on_success(
+        self, mock_run: mock.MagicMock, mock_which: mock.MagicMock
+    ) -> None:
+        mock_run.side_effect = [
+            mock.MagicMock(returncode=0, stdout="[]"),
+            mock.MagicMock(returncode=0, stdout=""),
+        ]
+        with tempfile.NamedTemporaryFile(
+            mode="w", delete=False, suffix=".json", dir=self._tmp_home
+        ) as tmp:
+            tmp.write(json.dumps({"installed": {"client_id": "cid"}}))
+            path = tmp.name
+
+        ok = save_secret(
+            "gws_auth", provider="bitwarden", from_file=path, delete_after=True
+        )
+
+        self.assertTrue(ok)
+        self.assertFalse(os.path.exists(path))
+
+    # --- Sync result reporting -----------------------------------------------
+
+    @mock.patch("get_credential.resolve_secret", return_value="xoxb-secret")
+    @mock.patch("get_credential.save_to_pass", return_value=False)
+    def test_main_sync_reports_failure_when_writes_fail(
+        self, mock_save: mock.MagicMock, mock_resolve: mock.MagicMock
+    ) -> None:
+        """A sync whose destination writes all failed must not report success."""
+        with mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+            code = main(
+                [
+                    "sync",
+                    "--upstream",
+                    "bitwarden",
+                    "--dest",
+                    "pass",
+                    "--keys",
+                    "slack_bot_token",
+                ]
+            )
+        self.assertEqual(code, 1)
+        self.assertIn("failed", err.getvalue())
+        self.assertNotIn("Successfully synced", self.stdout.getvalue())
+
+    @mock.patch("get_credential.resolve_secret", return_value="xoxb-secret")
+    @mock.patch("get_credential.save_to_pass", return_value=True)
+    def test_main_sync_reports_success_when_writes_succeed(
+        self, mock_save: mock.MagicMock, mock_resolve: mock.MagicMock
+    ) -> None:
+        code = main(
+            [
+                "sync",
+                "--upstream",
+                "bitwarden",
+                "--dest",
+                "pass",
+                "--keys",
+                "slack_bot_token",
+            ]
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("Successfully synced", self.stdout.getvalue())
 
 
 if __name__ == "__main__":
