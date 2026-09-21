@@ -92,8 +92,7 @@ compatible with both **Google Antigravity** and **Anthropic Claude Code**.
 - **References**:
   [`ARCHITECTURE.md`](managing-credentials/references/ARCHITECTURE.md)
 - **Scripts**:
-  - [`check_doppler.py`](managing-credentials/scripts/check_doppler.py)
-  - [`get_credential.py`](managing-credentials/scripts/get_credential.py)
+  [`get_credential.py`](managing-credentials/scripts/get_credential.py)
 
 ### [`sharing-snips`](sharing-snips/SKILL.md)
 

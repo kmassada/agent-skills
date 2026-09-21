@@ -3,37 +3,35 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "I want to set up Doppler for my AI agent workspace to store Slack credentials locally without any cloud sync. How do I initialize the project and set my tokens?",
-      "expected_output": "Provides commands to create a local Doppler project, bind the local directory using doppler setup, and set secrets with doppler secrets set without configuring cloud sync.",
+      "prompt": "I want to set up local credential management for my AI agent workspace to store Slack and Google Workspace credentials locally without writing plaintext files to disk. How do I initialize the store and set my tokens?",
+      "expected_output": "Provides commands to initialize the local pass store using pass init, and set secrets using cred set with hidden prompt or arguments.",
       "files": [],
       "expectations": [
-        "Instructs creating a project using doppler projects create",
-        "Binds local directory to dev environment using doppler setup",
-        "Sets secret tokens using doppler secrets set",
-        "Warns against setting up cloud sync or exporting plaintext tokens to disk"
+        "Instructs initializing pass store using pass init",
+        "Sets secret tokens using cred set or pass insert",
+        "Warns against exporting plaintext tokens or saving dot-env files to disk"
       ],
       "expected_command_patterns": [
-        "doppler\\s+projects\\s+create",
-        "doppler\\s+setup",
-        "doppler\\s+secrets\\s+set"
+        "pass\\s+init",
+        "cred\\s+set"
       ],
       "forbidden_command_patterns": [
-        "doppler\\s+integrations",
-        "echo.*>\\s*\\.env"
+        "echo.*>\\s*\\.env",
+        "cat.*>\\s*\\.env"
       ]
     },
     {
       "id": 2,
-      "prompt": "How do I run my Python agent script and configure an MCP server so they receive my Doppler credentials without writing a .env file to disk?",
-      "expected_output": "Explains using doppler run -- to inject environment variables into memory at runtime and keeping MCP configs clean by launching the agent via doppler run.",
+      "prompt": "How do I run my Python agent script and configure an MCP server so they receive my credentials without writing a .env file to disk?",
+      "expected_output": "Explains using cred run -- to inject environment variables into memory at runtime and keeping MCP configs clean by launching the agent via cred run.",
       "files": [],
       "expectations": [
-        "Demonstrates runtime injection using doppler run -- <command>",
-        "Explains launching agent session with doppler run to inherit credentials into MCP servers",
+        "Demonstrates runtime injection using cred run -- <command>",
+        "Explains launching agent session with cred run to inherit credentials into MCP servers",
         "Emphasizes zero disk exposure and preventing plaintext tokens in git"
       ],
       "expected_command_patterns": [
-        "doppler\\s+run\\s+--"
+        "cred\\s+run\\s+--"
       ],
       "forbidden_command_patterns": [
         "cat.*\\.env",
@@ -42,17 +40,17 @@
     },
     {
       "id": 3,
-      "prompt": "How do I retrieve credentials stored in my Bitwarden vault and launch an agent session without saving plaintext tokens to disk?",
-      "expected_output": "Explains using bw CLI or get_credential.py to unlock the vault and resolve credentials dynamically into agent process memory.",
+      "prompt": "How do I retrieve credentials stored in my Bitwarden vault and synchronize them into local pass without saving plaintext tokens to disk?",
+      "expected_output": "Explains using cred sync --upstream bitwarden --dest pass or get_credential.py to synchronize vault credentials into encrypted local pass store.",
       "files": [],
       "expectations": [
-        "Shows unlocking Bitwarden session or querying vault via bw CLI or get_credential.py",
-        "Demonstrates running agent with injected credentials directly into memory",
+        "Demonstrates syncing Bitwarden secrets using cred sync or get_credential.py",
+        "Shows running agent with injected credentials directly into memory",
         "Maintains zero plaintext credentials on host disk"
       ],
       "expected_command_patterns": [
-        "bw\\s+(login|unlock|get)",
-        "get_credential\\.py\\s+(get|run)"
+        "cred\\s+sync",
+        "get_credential\\.py"
       ],
       "forbidden_command_patterns": [
         "echo.*>\\s*\\.env",
@@ -61,7 +59,7 @@
     },
     {
       "id": 4,
-      "prompt": "How do I resolve Slack tokens from Google Cloud Secret Manager for my work AI agent environment?",
+      "prompt": "How do I resolve credentials from Google Cloud Secret Manager for my AI agent environment?",
       "expected_output": "Explains querying GCP Secret Manager using gcloud secrets versions access or get_credential.py with project configuration.",
       "files": [],
       "expectations": [

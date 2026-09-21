@@ -146,9 +146,9 @@ automatically inherit those environment variables without touching disk.
 
 ---
 
-## 7. Companion Scripts
+## 7. Companion Scripts & References
 
 * [`scripts/get_credential.py`](./scripts/get_credential.py): Local `pass` and
-  multi-vault resolver, runtime injector, and secret synchronization engine.
-* [`scripts/check_doppler.py`](./scripts/check_doppler.py): Optional Doppler CLI
-  verification helper.
+  multi-backend resolver, runtime injector, and secret synchronization engine.
+* [`references/ARCHITECTURE.md`](./references/ARCHITECTURE.md): Deep
+  architecture guide, macOS/Linux keyring setups, and disaster recovery.

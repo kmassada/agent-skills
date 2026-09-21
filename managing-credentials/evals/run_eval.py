@@ -50,33 +50,32 @@ def check_credential_expectation(text: str, expectation: str) -> tuple[bool, str
     lower_text = text.lower()
     lower_exp = expectation.lower()
 
-    if "doppler projects create" in lower_exp or "projects create" in lower_exp:
-        has_match = bool(re.search(r"doppler\s+projects\s+create", lower_text))
-        return has_match, "Mentions 'doppler projects create'"
+    if "pass init" in lower_exp or "initializ" in lower_exp:
+        has_match = bool(re.search(r"pass\s+init", lower_text))
+        return has_match, "Mentions 'pass init'"
 
-    if "doppler setup" in lower_exp:
-        has_match = bool(re.search(r"doppler\s+setup", lower_text))
-        return has_match, "Mentions 'doppler setup'"
+    if "cred set" in lower_exp or "sets secret" in lower_exp:
+        has_match = bool(
+            re.search(r"cred\s+set", lower_text)
+            or re.search(r"pass\s+insert", lower_text)
+        )
+        return has_match, "Mentions 'cred set' or 'pass insert'"
 
-    if "doppler secrets set" in lower_exp or "secrets set" in lower_exp:
-        has_match = bool(re.search(r"doppler\s+secrets\s+set", lower_text))
-        return has_match, "Mentions 'doppler secrets set'"
-
-    if "doppler run" in lower_exp or "runtime injection" in lower_exp:
-        has_match = bool(re.search(r"doppler\s+run\s+--", lower_text))
-        return has_match, "Uses 'doppler run --'"
+    if "cred run" in lower_exp or "runtime injection" in lower_exp:
+        has_match = bool(re.search(r"cred\s+run\s+--", lower_text))
+        return has_match, "Uses 'cred run --'"
 
     if "mcp" in lower_exp:
         has_match = "mcp" in lower_text or "servers" in lower_text
         return has_match, "Addresses MCP server configuration"
 
-    if "bitwarden" in lower_exp or "bw" in lower_exp:
+    if "bitwarden" in lower_exp or "sync" in lower_exp:
         has_match = (
-            "bw" in lower_text
+            "cred sync" in lower_text
             or "bitwarden" in lower_text
             or "get_credential" in lower_text
         )
-        return has_match, "Addresses Bitwarden vault resolution"
+        return has_match, "Addresses Bitwarden vault synchronization"
 
     if "gcp" in lower_exp or "google cloud" in lower_exp:
         has_match = (
@@ -84,14 +83,15 @@ def check_credential_expectation(text: str, expectation: str) -> tuple[bool, str
         )
         return has_match, "Addresses GCP Secret Manager resolution"
 
-    if "sync" in lower_exp or "warns" in lower_exp or "git" in lower_exp:
+    if "warns" in lower_exp or "git" in lower_exp or "disk" in lower_exp:
         has_guard = (
             "sync" in lower_text
             or "git" in lower_text
             or ".env" in lower_text
             or "leak" in lower_text
+            or "disk" in lower_text
         )
-        return has_guard, "Warns against sync/git leaks"
+        return has_guard, "Warns against leaks or plaintext on disk"
 
     return True, "Default check"
 
@@ -115,29 +115,27 @@ def run_static_eval(
 
     sample_solutions: dict[int, str] = {
         1: (
-            "Run `doppler projects create ai-agents` to create your project.\n"
-            "Next, run `doppler setup --project ai-agents --config dev`.\n"
-            "Set tokens via `doppler secrets set SLACK_BOT_TOKEN='xoxb-...'`.\n"
-            "Do not configure cloud sync or commit unencrypted .env files."
+            "Initialize your password store via `pass init user@local`.\n"
+            "Set tokens securely via `cred set slack/bot_token 'xoxb-...'`.\n"
+            "Never commit unencrypted .env files to git or host disk."
         ),
         2: (
-            "Use `doppler run -- python3 scripts/my_agent.py` to inject "
+            "Use `cred run -- python3 scripts/my_agent.py` to inject "
             "environment variables into memory without writing .env to disk.\n"
             "Keep MCP server configs clean and launch the agent session via "
-            "`doppler run -- agy` so MCP servers inherit credentials."
+            "`cred run -- agy` so child MCP processes inherit credentials."
         ),
         3: (
-            "Unlock your Bitwarden vault with `export BW_SESSION=$(bw unlock --raw)`.\n"
-            "Query credentials using `bw get item SLACK_BOT_TOKEN` or "
-            "`python3 scripts/get_credential.py get SLACK_BOT_TOKEN --provider bitwarden`.\n"
-            "Run your agent directly with `python3 scripts/get_credential.py run --keys SLACK_BOT_TOKEN -- agy`.\n"
-            "No plaintext tokens are written to .env or disk."
+            "Sync your Bitwarden vault using `cred sync --upstream bitwarden --dest pass`\n"
+            "or `python3 scripts/get_credential.py sync --upstream bitwarden --dest pass`.\n"
+            "Run your agent directly with `cred run -- agy`.\n"
+            "Zero plaintext tokens are written to .env or disk."
         ),
         4: (
             "Authenticate with `gcloud auth login`.\n"
             "Retrieve credentials via `gcloud secrets versions access latest --secret=SLACK_BOT_TOKEN`\n"
             "or use `python3 scripts/get_credential.py get SLACK_BOT_TOKEN --provider gcp --project my-corp`.\n"
-            "Inject tokens into memory at runtime with `python3 scripts/get_credential.py run --keys SLACK_BOT_TOKEN -- agy`."
+            "Inject tokens into memory at runtime with `python3 scripts/get_credential.py run -- agy`."
         ),
     }
 

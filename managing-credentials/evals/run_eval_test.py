@@ -23,34 +23,33 @@ class TestRunEval(unittest.TestCase):
     """Hermetic unit tests for eval runner functions."""
 
     def test_check_credential_expectation(self) -> None:
-        text = "Run doppler projects create test-proj and doppler setup --project test-proj"
+        text = (
+            "Initialize via pass init user@local and set via cred set slack/bot_token"
+        )
         passed, _ = check_credential_expectation(
-            text, "Instructs creating a project using doppler projects create"
+            text, "Instructs initializing pass store using pass init"
         )
         self.assertTrue(passed)
 
         passed, _ = check_credential_expectation(
-            text, "Binds local directory to dev environment using doppler setup"
+            text, "Sets secret tokens using cred set"
         )
         self.assertTrue(passed)
 
-        passed, _ = check_credential_expectation(
-            "echo hello", "Mentions doppler secrets set"
-        )
+        passed, _ = check_credential_expectation("echo hello", "Mentions pass init")
         self.assertFalse(passed)
 
     def test_run_static_eval_success(self) -> None:
         case = {
             "id": 1,
-            "expected_output": "doppler projects create p && doppler setup && doppler secrets set K=V",
+            "expected_output": "pass init user@local && cred set slack/bot_token xoxb",
             "expectations": [
-                "doppler projects create",
-                "doppler setup",
-                "doppler secrets set",
+                "pass init",
+                "cred set",
             ],
             "expected_command_patterns": [
-                r"doppler\s+projects\s+create",
-                r"doppler\s+setup",
+                r"pass\s+init",
+                r"cred\s+set",
             ],
             "forbidden_command_patterns": [r"echo\s+>\s+\.env"],
         }
@@ -61,9 +60,9 @@ class TestRunEval(unittest.TestCase):
     def test_run_static_eval_forbidden_failure(self) -> None:
         case = {
             "id": 99,
-            "expected_output": "doppler run -- python3 script.py\necho > .env",
-            "expectations": ["doppler run"],
-            "expected_command_patterns": [r"doppler\s+run\s+--"],
+            "expected_output": "cred run -- python3 script.py\necho > .env",
+            "expectations": ["cred run"],
+            "expected_command_patterns": [r"cred\s+run\s+--"],
             "forbidden_command_patterns": [r"echo\s+>\s+\.env"],
         }
         ok, failures = run_static_eval(case)
@@ -98,8 +97,8 @@ class TestRunEval(unittest.TestCase):
                         "evals": [
                             {
                                 "id": 1,
-                                "prompt": "Setup doppler project",
-                                "expected_output": "doppler projects create p && doppler setup",
+                                "prompt": "Setup pass store",
+                                "expected_output": "pass init user@local && cred set slack/bot_token",
                                 "expectations": [],
                                 "expected_command_patterns": [],
                                 "forbidden_command_patterns": [],

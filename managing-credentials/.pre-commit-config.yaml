@@ -38,7 +38,7 @@ repos:
       - id: companion-tests
         name: Run companion unit tests
         entry:
-          sh -c 'python3 scripts/check_doppler_test.py && python3
+          sh -c 'python3 scripts/get_credential_test.py && python3
           evals/run_eval_test.py'
         language: system
         pass_filenames: false
