@@ -181,6 +181,7 @@ class TestGetCredential(unittest.TestCase):
         mock_run.assert_called_once_with(
             [
                 "gcloud",
+                "--quiet",
                 "secrets",
                 "versions",
                 "access",
@@ -191,6 +192,7 @@ class TestGetCredential(unittest.TestCase):
             capture_output=True,
             text=True,
             check=False,
+            stdin=subprocess.DEVNULL,
         )
 
     @mock.patch("shutil.which", return_value="/usr/local/bin/doppler")

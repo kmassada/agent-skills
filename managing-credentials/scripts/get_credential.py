@@ -360,6 +360,7 @@ def resolve_from_bitwarden(
                 capture_output=True,
                 text=True,
                 check=False,
+                stdin=subprocess.DEVNULL,
             )
             if res.returncode == 0 and res.stdout.strip():
                 return res.stdout.strip()
@@ -370,6 +371,7 @@ def resolve_from_bitwarden(
                 capture_output=True,
                 text=True,
                 check=False,
+                stdin=subprocess.DEVNULL,
             )
             if res_item.returncode == 0 and res_item.stdout.strip():
                 data = json.loads(res_item.stdout)
@@ -440,6 +442,7 @@ def resolve_from_gcp(secret_name: str, project_id: str | None = None) -> str | N
 
     cmd = [
         "gcloud",
+        "--quiet",
         "secrets",
         "versions",
         "access",
@@ -450,7 +453,13 @@ def resolve_from_gcp(secret_name: str, project_id: str | None = None) -> str | N
         cmd.append(f"--project={project_id}")
 
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        res = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+            stdin=subprocess.DEVNULL,
+        )
         if res.returncode == 0 and res.stdout.strip():
             raw_val = res.stdout.strip()
             if field_path:
